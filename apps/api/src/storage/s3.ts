@@ -55,6 +55,10 @@ export function createS3Driver(config: Config): StorageDriver {
     endpoint: s3.endpoint,
     region: s3.region,
     forcePathStyle: false,
+    // By default the SDK presigns a checksum of the (empty) body it was given, which the
+    // browser's real file then fails. The signed content-length already pins the size.
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
     credentials: {
       accessKeyId: s3.accessKeyId,
       secretAccessKey: s3.secretAccessKey,

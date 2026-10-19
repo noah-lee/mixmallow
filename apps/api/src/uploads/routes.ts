@@ -139,7 +139,9 @@ export const uploadRoutes: FastifyPluginAsyncZod = async (app) => {
         return { error: 'upload_incomplete' };
       }
       if (size !== pending.sizeBytes) {
-        await app.db.delete(uploads).where(eq(uploads.id, pending.id));
+        await app.db
+          .delete(uploads)
+          .where(and(eq(uploads.id, pending.id), eq(uploads.userId, userId)));
         await app.storage.deleteMany([pending.storageKey]);
         reply.code(400);
         return { error: 'upload_size_mismatch' };
@@ -156,7 +158,9 @@ export const uploadRoutes: FastifyPluginAsyncZod = async (app) => {
 
         const limit = await limitError(tx, userId, upload);
         if (limit) {
-          await tx.delete(uploads).where(eq(uploads.id, upload.id));
+          await tx
+            .delete(uploads)
+            .where(and(eq(uploads.id, upload.id), eq(uploads.userId, userId)));
           return {
             error: limit,
             status: 403,
@@ -198,7 +202,9 @@ export const uploadRoutes: FastifyPluginAsyncZod = async (app) => {
           })
           .returning({ id: tracks.id });
         if (!track) throw new Error('track insert returned no row');
-        await tx.delete(uploads).where(eq(uploads.id, upload.id));
+        await tx
+          .delete(uploads)
+          .where(and(eq(uploads.id, upload.id), eq(uploads.userId, userId)));
         return { projectId, trackId: track.id };
       });
 
