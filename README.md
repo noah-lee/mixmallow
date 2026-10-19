@@ -38,9 +38,22 @@ The API validates its env at startup and exits if anything is missing. A fresh c
 - `DATABASE_URL`
 - Google OAuth: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 - Token/cookie secrets: `ACCESS_TOKEN_SECRET`, `REFRESH_TOKEN_SECRET`, `COOKIE_SECRET` (generate with `openssl rand -base64 48`)
-- Production only: `APP_ORIGIN=https://your.domain` (defaults to `http://localhost:5173` in dev)
+- Production only: `APP_ORIGIN=https://your.domain` (defaults to `http://localhost:5173` in dev), and an S3-compatible bucket (see "Audio storage")
 
 The Google redirect URI is derived as `<APP_ORIGIN>/api/auth/google/callback`; register that exact URL (for both dev and production) on the OAuth client. Optional: `PORT` (3000), `LOG_LEVEL` (info).
+
+### Audio storage
+
+The browser uploads audio straight to storage and plays it from there, through short-lived signed URLs the api hands out; the api never carries the bytes. `STORAGE_DRIVER` picks where:
+
+- `local` (default in dev and tests): files under `STORAGE_LOCAL_DIR` (`.data/storage`, git-ignored), served by HMAC-signed `/api/storage/local/*` routes that behave like a bucket. Refused in production.
+- `s3` (required in production): any S3-compatible bucket, e.g. DigitalOcean Spaces. Set `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` (and `S3_REGION` if the provider needs one). The bucket's origin is added to the CSP automatically.
+
+Before the first production deploy:
+
+1. Create the Space (bucket) and an access key limited to it.
+2. Set the bucket's CORS rules to allow `PUT`, `GET` and `HEAD` from `APP_ORIGIN`, with the `Content-Type` header allowed.
+3. After deploying, upload a file, play it, and delete it once by hand: the s3 driver has no offline tests.
 
 ## Scripts
 
@@ -122,7 +135,8 @@ bash ./scripts/add-app.sh turborepo
 cd ../turborepo
 cp .env.example .env       # paste DATABASE_URL_INTERNAL as DATABASE_URL, set
                            # APP_ORIGIN to your https domain, the Google OAuth client,
-                           # and token secrets (all required to boot).
+                           # token secrets, STORAGE_DRIVER=s3 and the S3_* vars
+                           # (all required to boot).
 bash deploy.sh             # build, validate env + migrate, start, prune old images
 ```
 
@@ -162,7 +176,7 @@ For one-off builds (e.g. registry push), without compose: `docker build -t turbo
 
 - Add a route: create a plugin under `apps/api/src`, register it inside the `/api` scope in `app.ts`. Put Zod schemas in the route options (`fastify-type-provider-zod`) and guard with `{ onRequest: [app.authenticate] }`.
 - Add a shared type/contract: add a Zod schema in `packages/shared/src/schemas.ts` and consume it on both sides.
-- Add email or file uploads: there's no seam for these yet — decorate a provider onto the root app in a `fastify-plugin` (e.g. `app.decorate('email', ...)`), and wire in an SDK (Resend/Postmark/SES, or S3/R2) when you actually need one.
+- Add email: there's no seam for it yet — decorate a provider onto the root app in a `fastify-plugin` the way `storage/plugin.ts` decorates `storage` (e.g. `app.decorate('email', ...)`), and wire in an SDK (Resend/Postmark/SES) when you actually need one.
 
 ## Node 24 native TypeScript
 

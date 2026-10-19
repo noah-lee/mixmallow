@@ -22,6 +22,8 @@ catalog:
   "@fastify/static": ^10.1.6
   fastify-plugin: ^6.0.1
   fastify-type-provider-zod: ^7.0.0
+  "@aws-sdk/client-s3": 3.1146.0
+  "@aws-sdk/s3-request-presigner": 3.1146.0
   vitest: ^5.0.5
   "@playwright/test": ^1.64.1
   react: ^19.3.1
