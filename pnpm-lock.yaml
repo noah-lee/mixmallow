@@ -102,9 +102,6 @@ catalogs:
     sonner:
       specifier: ^2.0.8
       version: 2.0.8
-    stripe:
-      specifier: ^23.0.0
-      version: 23.0.0
     tailwind-merge:
       specifier: ^3.7.0
       version: 3.7.0
@@ -191,9 +188,6 @@ importers:
       postgres:
         specifier: 'catalog:'
         version: 3.4.9
-      stripe:
-        specifier: 'catalog:'
-        version: 23.0.0(@types/node@24.12.3)
       zod:
         specifier: 'catalog:'
         version: 4.6.7
@@ -4232,15 +4226,6 @@ packages:
     resolution: {integrity: sha512-aulFJcD6YK8V1G7iRB5tigAP4TsHBZZrOV8pjV++zdUwmeV8uzbY7yn6h9MswN62adStNZFuCIx4haBnRuMDaw==}
     engines: {node: '>=18'}
 
-  stripe@23.0.0:
-    resolution: {integrity: sha512-MDE2A5ZVVluYURORaZEVghSmnLJc3w6aHAlZSxDQMsOjOb3V0O6ro/CiaeFlJS4N7uIVmsg98ocRsPmUK6YfyA==}
-    engines: {node: '>=20'}
-    peerDependencies:
-      '@types/node': '>=20'
-    peerDependenciesMeta:
-      '@types/node':
-        optional: true
-
   tailwind-merge@3.7.0:
     resolution: {integrity: sha512-XPPUyAc+cvspz3lHTcR/QgPfW2A0lv/xQNIjX3HGhLR+Nq2lHaLq5MtTesHn8GUr3W3DguT2KT5x3NVgRtYwmA==}
 
@@ -8231,10 +8216,6 @@ snapshots:
   strip-final-newline@2.0.0: {}
 
   strip-final-newline@4.0.0: {}
-
-  stripe@23.0.0(@types/node@24.12.3):
-    optionalDependencies:
-      '@types/node': 24.12.3
 
   tailwind-merge@3.7.0: {}
 

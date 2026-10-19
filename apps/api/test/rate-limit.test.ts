@@ -12,7 +12,7 @@ beforeEach(async () => {
 afterEach(() => app.close());
 
 describe('per-IP rate limit', () => {
-  it.each(['/api/auth/me', '/api/billing/subscription'])(
+  it.each(['/api/auth/me'])(
     'counts unauthenticated requests to guarded %s',
     async (url) => {
       for (let i = 0; i < LIMIT; i++) {
@@ -24,16 +24,4 @@ describe('per-IP rate limit', () => {
       expect(res.json()).toEqual({ error: 'rate_limited' });
     },
   );
-
-  it('never limits the Stripe webhook', async () => {
-    for (let i = 0; i <= LIMIT + 5; i++) {
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/billing/webhook',
-        headers: { 'content-type': 'application/json' },
-        payload: '{}',
-      });
-      expect(res.statusCode).toBe(400);
-    }
-  });
 });

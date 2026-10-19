@@ -12,13 +12,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Spinner } from "@/components/ui/spinner"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useMe, useSignOut, useSignOutEverywhere } from "@/features/auth/api"
-import { BillingSection } from "@/features/billing/billing-section"
 import { useTheme } from "@/providers/theme-provider"
 
 export const Route = createFileRoute("/_app/account")({
@@ -26,8 +24,8 @@ export const Route = createFileRoute("/_app/account")({
 })
 
 function Account() {
-  // Live, so a billing sync after checkout shows up. The guard's snapshot covers sign-out,
-  // which nulls `me` before navigating away.
+  // Live, so a profile change shows up. The guard's snapshot covers sign-out, which nulls
+  // `me` before navigating away.
   const { me: snapshot } = Route.useRouteContext()
   const me = useMe().data ?? snapshot
 
@@ -37,10 +35,7 @@ function Account() {
       <section aria-label="Profile" className="flex items-center gap-4 pb-6">
         <UserAvatar user={me} size="lg" />
         <div className="flex min-w-0 flex-1 flex-col">
-          <p className="flex items-center gap-2 font-medium">
-            <span className="truncate">{me.name ?? me.email}</span>
-            {me.isPremium && <Badge>Premium</Badge>}
-          </p>
+          <p className="truncate font-medium">{me.name ?? me.email}</p>
           {me.name && (
             <p
               title={me.email}
@@ -51,8 +46,6 @@ function Account() {
           )}
         </div>
       </section>
-      <Separator />
-      <BillingSection user={me} />
       <Separator />
       <AppearanceSection />
       <Separator />

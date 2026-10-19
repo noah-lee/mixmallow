@@ -1,4 +1,4 @@
-import { stripeSubscriptions, users } from '@repo/db';
+import { users } from '@repo/db';
 import { eq } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import {
@@ -19,20 +19,13 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         email: users.email,
         name: users.name,
         picture: users.picture,
-        subscriptionStatus: stripeSubscriptions.status,
       })
       .from(users)
-      .leftJoin(stripeSubscriptions, eq(stripeSubscriptions.userId, users.id))
       .where(eq(users.id, req.user.sub));
     if (!row) {
       return rejectSession(reply);
     }
-    const { subscriptionStatus, ...user } = row;
-    return {
-      ...user,
-      isPremium:
-        subscriptionStatus === 'active' || subscriptionStatus === 'trialing',
-    };
+    return row;
   });
 
   app.post('/refresh', async (req, reply) => {

@@ -28,7 +28,6 @@
     "fastify-plugin": "catalog:",
     "fastify-type-provider-zod": "catalog:",
     "postgres": "catalog:",
-    "stripe": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

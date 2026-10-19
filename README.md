@@ -38,12 +38,9 @@ The API validates its env at startup and exits if anything is missing. A fresh c
 - `DATABASE_URL`
 - Google OAuth: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 - Token/cookie secrets: `ACCESS_TOKEN_SECRET`, `REFRESH_TOKEN_SECRET`, `COOKIE_SECRET` (generate with `openssl rand -base64 48`)
-- Stripe billing: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PREMIUM_PRICE_ID` — `.env.example` documents how to obtain each, including running `stripe listen` to forward webhooks in local dev.
 - Production only: `APP_ORIGIN=https://your.domain` (defaults to `http://localhost:5173` in dev)
 
 The Google redirect URI is derived as `<APP_ORIGIN>/api/auth/google/callback`; register that exact URL (for both dev and production) on the OAuth client. Optional: `PORT` (3000), `LOG_LEVEL` (info).
-
-Billing is included by default. A project that doesn't need it can delete `apps/api/src/billing` (and the `billingPlugin`/`billingRoutes` registrations in `app.ts`), the billing UI in `apps/web` (`src/features/billing`, `BillingSection` in `routes/_app/account.tsx`, `useCheckoutToast` in `routes/__root.tsx`), the `stripe_*` tables in `packages/db/src/schema.ts` (then `pnpm db:generate`), the billing schemas in `packages/shared/src/schemas.ts`, the `STRIPE_*` env in `config.ts` and `.env.example`, and `stripe` from `apps/api/package.json`. `isPremium` crosses into auth too: drop the `stripe_subscriptions` join from `GET /auth/me` in `apps/api/src/auth/routes.ts`, the field from `meResponseSchema`, and the Premium badge in `account.tsx`.
 
 ## Scripts
 
@@ -77,8 +74,8 @@ docker exec -i postgres psql -U postgres -c "CREATE DATABASE turborepo_test OWNE
 
 - **Where tests live:** `<package>/test/*.test.ts` (Vitest) for `packages/shared` (schema units), `packages/db` (migrations) and `apps/api` (integration tests through `app.inject()`, against the real app and database), and `e2e/tests/` (Playwright). Test files share one database, so they run one at a time; don't run Vitest and Playwright at the same time.
 - **API helpers** (`apps/api/test/helpers/`): `createTestApp()` builds the real app with dummy config, `createTestSession(app)` inserts a user and returns real auth cookies to pass to `inject`, and `factories.ts` holds a `createX(db, overrides)` per table (add one per new table).
-- **OAuth** is tested offline: `stubGoogleTokenEndpoint()` replaces the `fetch` call to Google's token endpoint with an unsigned id_token, and `startSignIn(app)` gives the state and cookies for `/callback`. Stripe webhooks are signed locally; checkout, portal and sync call Stripe's API and aren't tested.
-- **New endpoints** should come with integration tests for: no session (401), invalid input (400), the happy path, and, for anything a user owns, that another user can't read or change it (see `GET /billing/subscription` in `apps/api/test/billing.test.ts`).
+- **OAuth** is tested offline: `stubGoogleTokenEndpoint()` replaces the `fetch` call to Google's token endpoint with an unsigned id_token, and `startSignIn(app)` gives the state and cookies for `/callback`.
+- **New endpoints** should come with integration tests for: no session (401), invalid input (400), the happy path, and, for anything a user owns, that another user can't read or change it.
 - **E2E:** import `test`/`expect` from `e2e/support/fixtures.ts`, so a test fails on any page or console error. The suite is signed in through `createTestSession`, not Google. To look at a page, `pnpm e2e:shots <route>` (or `captureScreenshot(page, name)` in a test) saves a screenshot to `e2e/screenshots/`.
 
 ## Adding a database migration
@@ -125,7 +122,7 @@ bash ./scripts/add-app.sh turborepo
 cd ../turborepo
 cp .env.example .env       # paste DATABASE_URL_INTERNAL as DATABASE_URL, set
                            # APP_ORIGIN to your https domain, the Google OAuth client,
-                           # token secrets and STRIPE_* vars (all required to boot).
+                           # and token secrets (all required to boot).
 bash deploy.sh             # build, validate env + migrate, start, prune old images
 ```
 
@@ -140,8 +137,6 @@ location / {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;   # the api rate-limits per client from this
 }
 ```
-
-Register the Stripe webhook endpoint as `https://your.domain/api/billing/webhook`.
 
 **Multiple apps on the same VPS:** give each its own `PORT` in its `.env`. They all share the `shared-pg` network, and each app reaches only its own database.
 
@@ -161,14 +156,13 @@ For one-off builds (e.g. registry push), without compose: `docker build -t turbo
 ## What's included
 
 - **Auth** — Google OIDC + PKCE; access/refresh JWTs in HttpOnly cookies (`__Host-`/`__Secure-` prefixed in prod); global sign-out via a rotating `session_id`.
-- **Billing** — Stripe subscriptions: checkout, customer portal, and webhook sync with atomic idempotency. Single premium tier out of the box.
-- **Security** — `@fastify/helmet` (CSP and other security headers on every response, the SPA included) + a coarse per-IP `@fastify/rate-limit` on `/api` (the Stripe webhook is exempt).
+- **Security** — `@fastify/helmet` (CSP and other security headers on every response, the SPA included) + a coarse per-IP `@fastify/rate-limit` on `/api`.
 
 ### Extending
 
 - Add a route: create a plugin under `apps/api/src`, register it inside the `/api` scope in `app.ts`. Put Zod schemas in the route options (`fastify-type-provider-zod`) and guard with `{ onRequest: [app.authenticate] }`.
 - Add a shared type/contract: add a Zod schema in `packages/shared/src/schemas.ts` and consume it on both sides.
-- Add email or file uploads: there's no seam for these yet — decorate a provider onto the app the way `billing/plugin.ts` decorates `stripe` (e.g. `app.decorate('email', ...)`), and wire in an SDK (Resend/Postmark/SES, or S3/R2) when you actually need one.
+- Add email or file uploads: there's no seam for these yet — decorate a provider onto the root app in a `fastify-plugin` (e.g. `app.decorate('email', ...)`), and wire in an SDK (Resend/Postmark/SES, or S3/R2) when you actually need one.
 
 ## Node 24 native TypeScript
 

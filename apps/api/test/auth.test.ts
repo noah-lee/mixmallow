@@ -41,7 +41,6 @@ describe('GET /api/auth/me', () => {
       email: user.email,
       name: user.name,
       picture: null,
-      isPremium: false,
     });
   });
 });

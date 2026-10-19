@@ -7,7 +7,6 @@ import {
   useRouter,
 } from "@tanstack/react-router"
 import { Button } from "@/components/ui/button"
-import { useCheckoutToast } from "@/features/billing/use-checkout-toast"
 
 export type RouterContext = {
   queryClient: QueryClient
@@ -21,7 +20,6 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 })
 
 function RootLayout() {
-  useCheckoutToast()
   return <Outlet />
 }
 

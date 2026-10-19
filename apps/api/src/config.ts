@@ -29,10 +29,6 @@ const baseSchema = z.object({
     )
     .transform((url) => new URL(url).origin)
     .default('http://localhost:5173'),
-
-  STRIPE_SECRET_KEY: z.string().min(1),
-  STRIPE_WEBHOOK_SECRET: z.string().min(1),
-  STRIPE_PREMIUM_PRICE_ID: z.string().startsWith('price_'),
 });
 
 const envSchema = baseSchema.superRefine((env, ctx) => {
@@ -53,13 +49,6 @@ const envSchema = baseSchema.superRefine((env, ctx) => {
       code: 'custom',
       path: ['APP_ORIGIN'],
       message: 'Must use https in production',
-    });
-  }
-  if (!env.STRIPE_SECRET_KEY.startsWith('sk_live_')) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['STRIPE_SECRET_KEY'],
-      message: 'Must be a live key (sk_live_) in production',
     });
   }
 });

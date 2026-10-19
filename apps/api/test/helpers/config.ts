@@ -13,9 +13,6 @@ export const TEST_ENV = {
   ACCESS_TOKEN_SECRET: 'test-access-secret-0123456789abcdefghijklmnop',
   REFRESH_TOKEN_SECRET: 'test-refresh-secret-0123456789abcdefghijklmnop',
   COOKIE_SECRET: 'test-cookie-secret-0123456789abcdefghijklmnop',
-  STRIPE_SECRET_KEY: 'sk_test_dummy',
-  STRIPE_WEBHOOK_SECRET: 'whsec_test_dummy',
-  STRIPE_PREMIUM_PRICE_ID: 'price_test_dummy',
 } as const;
 
 export function createTestConfig(overrides: Partial<Config> = {}): Config {
