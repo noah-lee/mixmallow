@@ -17,6 +17,7 @@ import { projectRoutes } from './projects/routes.ts';
 import { localStorageRoutes } from './storage/local-routes.ts';
 import { storagePlugin } from './storage/plugin.ts';
 import { s3BucketOrigin } from './storage/s3.ts';
+import { uploadRoutes } from './uploads/routes.ts';
 import { usageRoutes } from './usage/routes.ts';
 
 // The built SPA, beside dist/ in the image (the Dockerfile copies it there). Absent in dev,
@@ -127,6 +128,7 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
       await api.register(authRoutesPlugin);
       await api.register(usageRoutes, { prefix: '/usage' });
       await api.register(projectRoutes, { prefix: '/projects' });
+      await api.register(uploadRoutes, { prefix: '/uploads' });
       if (config.STORAGE_DRIVER === 'local') {
         await api.register(localStorageRoutes, { prefix: '/storage/local' });
       }
