@@ -13,6 +13,7 @@ import {
 } from 'fastify-type-provider-zod';
 import { authPlugin, authRoutesPlugin } from './auth/plugin.ts';
 import type { Config } from './config.ts';
+import { noteRoutes } from './notes/routes.ts';
 import { projectRoutes } from './projects/routes.ts';
 import { localStorageRoutes } from './storage/local-routes.ts';
 import { storagePlugin } from './storage/plugin.ts';
@@ -131,6 +132,7 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
       await api.register(projectRoutes, { prefix: '/projects' });
       await api.register(uploadRoutes, { prefix: '/uploads' });
       await api.register(trackRoutes, { prefix: '/tracks' });
+      await api.register(noteRoutes);
       if (config.STORAGE_DRIVER === 'local') {
         await api.register(localStorageRoutes, { prefix: '/storage/local' });
       }
