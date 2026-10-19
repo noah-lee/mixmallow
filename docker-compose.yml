@@ -1,0 +1,38 @@
+# Production-style compose for VPS deployment.
+# Local dev uses `pnpm dev` directly; this file is only for deploying.
+#
+# One container: the api serves the SPA and /api/* on PORT. It's published on
+# localhost only, and the host's TLS nginx proxies every request to it. The
+# container joins `shared-pg`, the external network created by the postgres
+# companion repo, to reach `postgres:5432`.
+#
+# Prereq on the VPS: the postgres repo's compose is up, and the shared-pg
+# network exists (`docker network ls | grep shared-pg`).
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    # Docker's default json-file driver never rotates, so logs would grow until the disk fills.
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    # The api validates every variable at boot (apps/api/src/config.ts), and
+    # deploy.sh runs that check before swapping containers.
+    env_file: .env
+    environment:
+      # Wins over .env, where a leftover NODE_ENV=development would silently
+      # disable the production-only config checks.
+      NODE_ENV: production
+    ports:
+      # Localhost only: Docker-published ports bypass UFW, so binding all
+      # interfaces would expose plain http around the host's TLS nginx.
+      - "127.0.0.1:${PORT:-3000}:${PORT:-3000}"
+    networks:
+      - shared-pg
+
+networks:
+  shared-pg:
+    external: true

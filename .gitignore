@@ -1,0 +1,34 @@
+node_modules/
+
+dist/
+build/
+
+.turbo/
+.vite/
+
+.env
+.env.local
+.env.*.local
+!.env.example
+
+coverage/
+
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+.DS_Store
+Thumbs.db
+
+.vscode/
+.idea/
+# Scratch output of packages/db/scripts/check-migrations.ts
+.migrations-check/
+# The SPA build the image places beside the api's dist/ (app.test.ts creates one briefly)
+apps/api/public/
+
+# Playwright (e2e/)
+e2e/.auth/
+e2e/playwright-report/
+e2e/test-results/
+e2e/screenshots/
