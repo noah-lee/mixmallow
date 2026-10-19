@@ -12,7 +12,7 @@ beforeEach(async () => {
 afterEach(() => app.close());
 
 describe('per-IP rate limit', () => {
-  it.each(['/api/auth/me'])(
+  it.each(['/api/auth/me', '/api/projects'])(
     'counts unauthenticated requests to guarded %s',
     async (url) => {
       for (let i = 0; i < LIMIT; i++) {

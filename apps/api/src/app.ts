@@ -13,9 +13,11 @@ import {
 } from 'fastify-type-provider-zod';
 import { authPlugin, authRoutesPlugin } from './auth/plugin.ts';
 import type { Config } from './config.ts';
+import { projectRoutes } from './projects/routes.ts';
 import { localStorageRoutes } from './storage/local-routes.ts';
 import { storagePlugin } from './storage/plugin.ts';
 import { s3BucketOrigin } from './storage/s3.ts';
+import { usageRoutes } from './usage/routes.ts';
 
 // The built SPA, beside dist/ in the image (the Dockerfile copies it there). Absent in dev,
 // where Vite serves the SPA and proxies /api here.
@@ -123,6 +125,8 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
         await limit.call(this, req, reply);
       });
       await api.register(authRoutesPlugin);
+      await api.register(usageRoutes, { prefix: '/usage' });
+      await api.register(projectRoutes, { prefix: '/projects' });
       if (config.STORAGE_DRIVER === 'local') {
         await api.register(localStorageRoutes, { prefix: '/storage/local' });
       }
