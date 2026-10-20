@@ -11,6 +11,8 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml .npmrc package.json ./
 RUN pnpm fetch
 COPY . .
 RUN pnpm install --offline --frozen-lockfile --filter=@repo/api... --filter=@repo/web...
+# Node sizes its default heap from physical RAM (~256MB on a small VPS), too small for tsc + vite; swap covers the gap.
+ENV NODE_OPTIONS=--max-old-space-size=1536
 RUN pnpm --filter @repo/api --filter @repo/web build
 RUN pnpm deploy --legacy --filter=@repo/api --prod /out
 
