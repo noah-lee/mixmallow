@@ -25,7 +25,6 @@ Thumbs.db
 # Scratch output of packages/db/scripts/check-migrations.ts
 .migrations-check/
 # Audio files of the local storage driver
-.data/
 # The SPA build the image places beside the api's dist/ (app.test.ts creates one briefly)
 apps/api/public/
 

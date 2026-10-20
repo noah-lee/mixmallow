@@ -1,5 +1,3 @@
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { testDatabaseUrl } from '@repo/db/testing';
 import type { Config } from '../../src/config.ts';
 
@@ -15,8 +13,11 @@ export const TEST_ENV = {
   ACCESS_TOKEN_SECRET: 'test-access-secret-0123456789abcdefghijklmnop',
   REFRESH_TOKEN_SECRET: 'test-refresh-secret-0123456789abcdefghijklmnop',
   COOKIE_SECRET: 'test-cookie-secret-0123456789abcdefghijklmnop',
-  STORAGE_DRIVER: 'local',
-  STORAGE_LOCAL_DIR: path.join(tmpdir(), 'repo-api-test-storage'),
+  // Vitest swaps in the memory driver; the e2e api presigns against this offline.
+  S3_ENDPOINT: 'https://storage.test',
+  S3_BUCKET: 'test-bucket',
+  S3_ACCESS_KEY_ID: 'test-access-key',
+  S3_SECRET_ACCESS_KEY: 'test-secret-key',
 } as const;
 
 export function createTestConfig(overrides: Partial<Config> = {}): Config {

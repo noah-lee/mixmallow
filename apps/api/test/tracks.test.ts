@@ -5,6 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp } from './helpers/app.ts';
 import { createNote, createProject, createTrack } from './helpers/factories.ts';
+import { keyFromUrl } from './helpers/memory-storage.ts';
 import { createTestSession } from './helpers/session.ts';
 import { uploadTrack, writeStoredObject } from './helpers/uploads.ts';
 
@@ -149,7 +150,7 @@ describe('DELETE /api/tracks/:trackId', () => {
   it('deletes the track, its notes and its file, and frees its storage', async () => {
     const { session, track } = await sessionWithTrack({ sizeBytes: 5 * MB });
     await createNote(app.db, { userId: session.user.id, trackId: track.id });
-    await writeStoredObject(app, track.storageKey, 10);
+    writeStoredObject(app, track.storageKey, 10);
     const usage = () =>
       app.inject({
         method: 'GET',
@@ -170,7 +171,7 @@ describe('DELETE /api/tracks/:trackId', () => {
 
   it("404s another user's track and leaves it and its file", async () => {
     const { track } = await sessionWithTrack();
-    await writeStoredObject(app, track.storageKey, 10);
+    writeStoredObject(app, track.storageKey, 10);
     const { cookies } = await createTestSession(app);
     const res = await remove(track.id, cookies);
     expect(res.statusCode).toBe(404);
@@ -198,23 +199,14 @@ describe('GET /api/tracks/:trackId/audio', () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it('returns a fresh URL each time that streams the file by range', async () => {
-    const session = await createTestSession(app);
-    const bytes = Buffer.from('0123456789abcdef');
-    const { track } = await uploadTrack(app, session, { bytes });
+  it("returns a fresh signed URL for the track's file each time", async () => {
+    const { session, track } = await sessionWithTrack();
 
     const res = await audioUrl(track.id, session.cookies);
     expect(res.statusCode).toBe(200);
     const { url, expiresAt } = audioUrlResponseSchema.parse(res.json());
+    expect(keyFromUrl(url)).toBe(track.storageKey);
     expect(new Date(expiresAt).getTime()).toBeGreaterThan(Date.now());
-
-    const stream = await app.inject({
-      method: 'GET',
-      url,
-      headers: { range: 'bytes=0-3' },
-    });
-    expect(stream.statusCode).toBe(206);
-    expect(stream.rawPayload.toString()).toBe('0123');
 
     const again = await audioUrl(track.id, session.cookies);
     expect(again.statusCode).toBe(200);

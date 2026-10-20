@@ -1,5 +1,3 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import path from 'node:path';
 import {
   type CompleteUploadResponse,
   type CreateUploadResponse,
@@ -7,22 +5,17 @@ import {
   createUploadResponseSchema,
 } from '@repo/shared/schemas';
 import type { FastifyInstance } from 'fastify';
-import { localPath } from '../../src/storage/local.ts';
+import { memoryStorage } from './app.ts';
+import { keyFromUrl } from './memory-storage.ts';
 import type { TestSession } from './session.ts';
 
-// Puts an object straight into the local driver's directory, for tests where only its
-// existence or size matters.
-export async function writeStoredObject(
+// Puts an object of `sizeBytes` straight into the in-memory bucket.
+export function writeStoredObject(
   app: FastifyInstance,
   key: string,
-  bytes: Buffer | number,
-): Promise<void> {
-  const file = localPath(app.config, key);
-  await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(
-    file,
-    typeof bytes === 'number' ? Buffer.alloc(bytes) : bytes,
-  );
+  sizeBytes: number,
+): void {
+  memoryStorage(app).objects.set(key, sizeBytes);
 }
 
 export type UploadOptions = {
@@ -54,18 +47,13 @@ export function registerUpload(
   });
 }
 
-// PUTs the bytes to the signed URL the way a browser would.
+// What the browser's PUT to the signed URL leaves in the bucket.
 export function putUpload(
   app: FastifyInstance,
   registered: CreateUploadResponse,
   bytes: Buffer,
-) {
-  return app.inject({
-    method: 'PUT',
-    url: registered.uploadUrl,
-    headers: registered.headers,
-    payload: bytes,
-  });
+): void {
+  writeStoredObject(app, keyFromUrl(registered.uploadUrl), bytes.length);
 }
 
 export function completeUpload(
@@ -94,8 +82,7 @@ export async function uploadTrack(
     throw new Error(`register failed: ${registered.body}`);
   }
   const body = createUploadResponseSchema.parse(registered.json());
-  const put = await putUpload(app, body, bytes);
-  if (put.statusCode !== 200) throw new Error(`PUT failed: ${put.body}`);
+  putUpload(app, body, bytes);
   const completed = await completeUpload(app, session, body.uploadId, options);
   if (completed.statusCode !== 201) {
     throw new Error(`complete failed: ${completed.body}`);

@@ -38,22 +38,22 @@ The API validates its env at startup and exits if anything is missing. A fresh c
 - `DATABASE_URL`
 - Google OAuth: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 - Token/cookie secrets: `ACCESS_TOKEN_SECRET`, `REFRESH_TOKEN_SECRET`, `COOKIE_SECRET` (generate with `openssl rand -base64 48`)
-- Production only: `APP_ORIGIN=https://your.domain` (defaults to `http://localhost:5173` in dev), and an S3-compatible bucket (see "Audio storage")
+- An S3-compatible bucket, one for dev and one for production (see "Audio storage")
+- Production only: `APP_ORIGIN=https://your.domain` (defaults to `http://localhost:5173` in dev)
 
 The Google redirect URI is derived as `<APP_ORIGIN>/api/auth/google/callback`; register that exact URL (for both dev and production) on the OAuth client. Optional: `PORT` (3000), `LOG_LEVEL` (info).
 
 ### Audio storage
 
-The browser uploads audio straight to storage and plays it from there, through short-lived signed URLs the api hands out; the api never carries the bytes. `STORAGE_DRIVER` picks where:
+The browser uploads audio straight to an S3-compatible bucket (e.g. DigitalOcean Spaces) and plays it from there, through short-lived signed URLs the api hands out; the api never carries the bytes. Set `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` (and `S3_REGION` if the provider needs one); the api refuses to boot without them. The bucket's origin is added to the CSP automatically.
 
-- `local` (default in dev and tests): files under `STORAGE_LOCAL_DIR` (`.data/storage`, git-ignored), served by HMAC-signed `/api/storage/local/*` routes that behave like a bucket. Refused in production.
-- `s3` (required in production): any S3-compatible bucket, e.g. DigitalOcean Spaces. Set `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` (and `S3_REGION` if the provider needs one). The bucket's origin is added to the CSP automatically.
+Dev and production each get their own bucket, so local work never touches real files:
 
-Before the first production deploy:
+1. Create the two Spaces (buckets) in the same region, with file listing restricted and the CDN off.
+2. Create an access key per bucket, limited to that bucket (read/write/delete).
+3. Set each bucket's CORS rules to allow `PUT`, `GET` and `HEAD` from its app origin (`http://localhost:5173` for dev, `APP_ORIGIN` for production), with the `Content-Type` header allowed.
 
-1. Create the Space (bucket) and an access key limited to it.
-2. Set the bucket's CORS rules to allow `PUT`, `GET` and `HEAD` from `APP_ORIGIN`, with the `Content-Type` header allowed.
-3. After deploying, upload a file, play it, and delete it once by hand: the s3 driver has no offline tests.
+Tests never reach a bucket: `createTestApp()` injects an in-memory driver (`apps/api/test/helpers/memory-storage.ts`), and `putUpload`/`writeStoredObject` put objects into it directly. The real upload path (presigned PUT, CORS, range playback) is only exercised against the dev bucket, so try an upload there after changing anything in `storage/s3.ts`.
 
 ## Scripts
 
@@ -135,7 +135,7 @@ bash ./scripts/add-app.sh turborepo
 cd ../turborepo
 cp .env.example .env       # paste DATABASE_URL_INTERNAL as DATABASE_URL, set
                            # APP_ORIGIN to your https domain, the Google OAuth client,
-                           # token secrets, STORAGE_DRIVER=s3 and the S3_* vars
+                           # token secrets and the production bucket's S3_* vars
                            # (all required to boot).
 bash deploy.sh             # build, validate env + migrate, start, prune old images
 ```

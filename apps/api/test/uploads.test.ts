@@ -154,7 +154,7 @@ describe('POST /api/uploads', () => {
   it('replaces a previous pending upload and its stored file', async () => {
     const session = await createTestSession(app);
     const first = await registered(session);
-    await putUpload(app, first, audio);
+    putUpload(app, first, audio);
     const [firstRow] = await uploadRows(session.user.id);
     if (!firstRow) throw new Error('no first upload');
 
@@ -276,7 +276,7 @@ describe('POST /api/uploads/:uploadId/complete', () => {
     const { uploadId } = await registered(session);
     const [row] = await uploadRows(session.user.id);
     if (!row) throw new Error('no upload');
-    await writeStoredObject(app, row.storageKey, audio.length + 5);
+    writeStoredObject(app, row.storageKey, audio.length + 5);
 
     const res = await completeUpload(app, session, uploadId);
     expect(res.statusCode).toBe(400);
@@ -293,7 +293,7 @@ describe('POST /api/uploads/:uploadId/complete', () => {
       STORAGE_LIMIT_BYTES - audio.length,
     );
     const upload = await registered(session, project.id);
-    await putUpload(app, upload, audio);
+    putUpload(app, upload, audio);
     const [row] = await uploadRows(session.user.id);
     if (!row) throw new Error('no upload');
     await createTrack(app.db, {
@@ -312,7 +312,7 @@ describe('POST /api/uploads/:uploadId/complete', () => {
   it('creates one track when the same upload is completed twice at once', async () => {
     const session = await createTestSession(app);
     const upload = await registered(session);
-    await putUpload(app, upload, audio);
+    putUpload(app, upload, audio);
     const results = await Promise.all([
       completeUpload(app, session, upload.uploadId),
       completeUpload(app, session, upload.uploadId),
@@ -324,7 +324,7 @@ describe('POST /api/uploads/:uploadId/complete', () => {
   it("404s another user's upload and leaves it in place", async () => {
     const owner = await createTestSession(app);
     const upload = await registered(owner);
-    await putUpload(app, upload, audio);
+    putUpload(app, upload, audio);
     const session = await createTestSession(app);
     const res = await completeUpload(app, session, upload.uploadId);
     expect(res.statusCode).toBe(404);
@@ -355,7 +355,7 @@ describe('DELETE /api/uploads/:uploadId', () => {
   it('cancels the upload and deletes its stored file', async () => {
     const session = await createTestSession(app);
     const upload = await registered(session);
-    await putUpload(app, upload, audio);
+    putUpload(app, upload, audio);
     const [row] = await uploadRows(session.user.id);
     if (!row) throw new Error('no upload');
 
@@ -368,7 +368,7 @@ describe('DELETE /api/uploads/:uploadId', () => {
   it("404s another user's upload and leaves it in place", async () => {
     const owner = await createTestSession(app);
     const upload = await createUpload(app.db, { userId: owner.user.id });
-    await writeStoredObject(app, upload.storageKey, 10);
+    writeStoredObject(app, upload.storageKey, 10);
     const { cookies } = await createTestSession(app);
     const res = await cancel(upload.id, cookies);
     expect(res.statusCode).toBe(404);

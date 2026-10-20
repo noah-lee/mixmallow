@@ -14,57 +14,29 @@ import {
   UPLOAD_URL_TTL_MS,
 } from './driver.ts';
 
-function s3Config(config: Config) {
-  const {
-    S3_ENDPOINT,
-    S3_REGION,
-    S3_BUCKET,
-    S3_ACCESS_KEY_ID,
-    S3_SECRET_ACCESS_KEY,
-  } = config;
-  // config.ts already requires these for the s3 driver.
-  if (
-    !S3_ENDPOINT ||
-    !S3_BUCKET ||
-    !S3_ACCESS_KEY_ID ||
-    !S3_SECRET_ACCESS_KEY
-  ) {
-    throw new Error('S3 storage is not configured');
-  }
-  return {
-    endpoint: S3_ENDPOINT,
-    region: S3_REGION,
-    bucket: S3_BUCKET,
-    accessKeyId: S3_ACCESS_KEY_ID,
-    secretAccessKey: S3_SECRET_ACCESS_KEY,
-  };
-}
-
 // Virtual-hosted style: the browser PUTs to and plays from https://<bucket>.<endpoint host>,
 // which the CSP in app.ts must allow.
 export function s3BucketOrigin(config: Config): string {
-  const { endpoint, bucket } = s3Config(config);
-  return `https://${bucket}.${new URL(endpoint).host}`;
+  return `https://${config.S3_BUCKET}.${new URL(config.S3_ENDPOINT).host}`;
 }
 
 const seconds = (ms: number) => Math.floor(ms / 1000);
 
 export function createS3Driver(config: Config): StorageDriver {
-  const s3 = s3Config(config);
   const client = new S3Client({
-    endpoint: s3.endpoint,
-    region: s3.region,
+    endpoint: config.S3_ENDPOINT,
+    region: config.S3_REGION,
     forcePathStyle: false,
     // By default the SDK presigns a checksum of the (empty) body it was given, which the
     // browser's real file then fails. The signed content-length already pins the size.
     requestChecksumCalculation: 'WHEN_REQUIRED',
     responseChecksumValidation: 'WHEN_REQUIRED',
     credentials: {
-      accessKeyId: s3.accessKeyId,
-      secretAccessKey: s3.secretAccessKey,
+      accessKeyId: config.S3_ACCESS_KEY_ID,
+      secretAccessKey: config.S3_SECRET_ACCESS_KEY,
     },
   });
-  const Bucket = s3.bucket;
+  const Bucket = config.S3_BUCKET;
 
   return {
     async presignPut({ key, contentType, sizeBytes }) {

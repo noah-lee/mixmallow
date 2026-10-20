@@ -4,7 +4,6 @@ import { createTestConfig } from './helpers/config.ts';
 
 // Presigning is local signing, so this runs offline with dummy credentials.
 const config = createTestConfig({
-  STORAGE_DRIVER: 's3',
   S3_ENDPOINT: 'https://ams3.digitaloceanspaces.com',
   S3_BUCKET: 'bucket',
   S3_ACCESS_KEY_ID: 'key',

@@ -15,7 +15,7 @@ import { authPlugin, authRoutesPlugin } from './auth/plugin.ts';
 import type { Config } from './config.ts';
 import { noteRoutes } from './notes/routes.ts';
 import { projectRoutes } from './projects/routes.ts';
-import { localStorageRoutes } from './storage/local-routes.ts';
+import type { StorageDriver } from './storage/driver.ts';
 import { storagePlugin } from './storage/plugin.ts';
 import { s3BucketOrigin } from './storage/s3.ts';
 import { trackRoutes } from './tracks/routes.ts';
@@ -33,7 +33,15 @@ declare module 'fastify' {
   }
 }
 
-export async function buildApp(config: Config): Promise<FastifyInstance> {
+export type BuildOptions = {
+  // Tests inject an in-memory driver; otherwise the bucket from config.
+  storageDriver?: StorageDriver;
+};
+
+export async function buildApp(
+  config: Config,
+  options: BuildOptions = {},
+): Promise<FastifyInstance> {
   const app = Fastify({
     logger: { level: config.LOG_LEVEL },
     // Behind the host's TLS proxy (via Docker's port forwarding), the socket peer is a
@@ -51,15 +59,14 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
   // No CORS plugin: the SPA and api share one origin. The one cross-origin party is the
   // S3 bucket, which the browser uploads to and plays from directly (its own CORS rules
   // live on the bucket).
-  const storageOrigins =
-    config.STORAGE_DRIVER === 's3' ? [s3BucketOrigin(config)] : [];
+  const bucketOrigin = s3BucketOrigin(config);
   await app.register(helmet, {
     contentSecurityPolicy: {
       directives: {
         imgSrc: ["'self'", 'https:', 'data:'],
         styleSrc: ["'self'", "'unsafe-inline'"],
-        connectSrc: ["'self'", ...storageOrigins],
-        mediaSrc: ["'self'", ...storageOrigins],
+        connectSrc: ["'self'", bucketOrigin],
+        mediaSrc: ["'self'", bucketOrigin],
         frameAncestors: ["'none'"],
       },
     },
@@ -108,7 +115,9 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
   // Shared services (cookies, jwt, authenticate, storage) decorate the root, so every scope
   // sees them; routes stay in the /api scope below. Must come before the routes use them.
   await app.register(authPlugin);
-  await app.register(storagePlugin);
+  await app.register(storagePlugin, {
+    ...(options.storageDriver && { driver: options.storageDriver }),
+  });
 
   await app.register(
     async (api) => {
@@ -133,9 +142,6 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
       await api.register(uploadRoutes, { prefix: '/uploads' });
       await api.register(trackRoutes, { prefix: '/tracks' });
       await api.register(noteRoutes);
-      if (config.STORAGE_DRIVER === 'local') {
-        await api.register(localStorageRoutes, { prefix: '/storage/local' });
-      }
 
       api.get('/health', async () => ({ status: 'ok' }));
 

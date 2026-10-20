@@ -30,23 +30,14 @@ const baseSchema = z.object({
     .transform((url) => new URL(url).origin)
     .default('http://localhost:5173'),
 
-  // `local` keeps audio on disk and serves it from signed /api/storage/local URLs, so dev
-  // and tests need no bucket. Production must use `s3` (any S3-compatible service).
-  STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
-  STORAGE_LOCAL_DIR: z.string().min(1).default('.data/storage'),
-  S3_ENDPOINT: z.url().optional(),
+  // Any S3-compatible bucket (DigitalOcean Spaces). Dev uses its own bucket; tests inject an
+  // in-memory driver instead (test/helpers/memory-storage.ts).
+  S3_ENDPOINT: z.url(),
   S3_REGION: z.string().min(1).default('us-east-1'),
-  S3_BUCKET: z.string().min(1).optional(),
-  S3_ACCESS_KEY_ID: z.string().min(1).optional(),
-  S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+  S3_BUCKET: z.string().min(1),
+  S3_ACCESS_KEY_ID: z.string().min(1),
+  S3_SECRET_ACCESS_KEY: z.string().min(1),
 });
-
-const S3_REQUIRED = [
-  'S3_ENDPOINT',
-  'S3_BUCKET',
-  'S3_ACCESS_KEY_ID',
-  'S3_SECRET_ACCESS_KEY',
-] as const;
 
 export const envSchema = baseSchema.superRefine((env, ctx) => {
   // Both tokens carry `sub`, so with one shared secret a refresh token would pass as an
@@ -59,27 +50,7 @@ export const envSchema = baseSchema.superRefine((env, ctx) => {
     });
   }
 
-  if (env.STORAGE_DRIVER === 's3') {
-    for (const key of S3_REQUIRED) {
-      if (!env[key]) {
-        ctx.addIssue({
-          code: 'custom',
-          path: [key],
-          message: 'Required when STORAGE_DRIVER is s3',
-        });
-      }
-    }
-  }
-
   if (env.NODE_ENV !== 'production') return;
-
-  if (env.STORAGE_DRIVER !== 's3') {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['STORAGE_DRIVER'],
-      message: 'Must be s3 in production',
-    });
-  }
 
   if (!env.APP_ORIGIN.startsWith('https://')) {
     ctx.addIssue({

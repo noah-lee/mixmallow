@@ -186,8 +186,8 @@ describe('DELETE /api/projects/:projectId', () => {
       userId: session.user.id,
       projectId: project.id,
     });
-    await writeStoredObject(app, track.storageKey, 10);
-    await writeStoredObject(app, upload.storageKey, 10);
+    writeStoredObject(app, track.storageKey, 10);
+    writeStoredObject(app, upload.storageKey, 10);
     return { session, project, track, upload };
   }
 
