@@ -78,7 +78,7 @@ export function WaveformIllustration() {
             <span className="shrink-0 rounded-full bg-primary-tint px-2.5 py-0.5 font-mono text-time text-primary-text tabular-nums">
               {time}
             </span>
-            <span className="text-sm">{text}</span>
+            <span className="text-sm text-pretty">{text}</span>
           </li>
         ))}
       </ul>
