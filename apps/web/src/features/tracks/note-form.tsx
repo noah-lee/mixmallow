@@ -82,7 +82,6 @@ export function NoteForm({
   const pin = () => {
     if (pinnedMs !== null) return pinnedMs
     setPinnedMs(timeMs)
-    onDraftChange?.({ text, pinnedMs: timeMs })
     return timeMs
   }
   const nudge = (delta: number) => {

@@ -179,7 +179,8 @@ function TrackView({
     draft:
       draftRef.current?.key === draftKey ? draftRef.current.draft : undefined,
     onDraftChange: (draft: NoteDraft | null) => {
-      draftRef.current = draft ? { key: draftKey, draft } : null
+      if (draft) draftRef.current = { key: draftKey, draft }
+      else if (draftRef.current?.key === draftKey) draftRef.current = null
     },
   }
 
@@ -416,7 +417,13 @@ function TrackView({
                 editing={note.id === editing?.id}
                 onSeek={() => player.seek(note.timestampMs)}
                 onDoneChange={(done) => void setDone(note, done)}
-                onEdit={() => setEditing(note)}
+                onEdit={() => {
+                  // An unsaved edit of another note is dropped, as before; an add draft waits.
+                  if (draftRef.current?.key.startsWith("edit-")) {
+                    draftRef.current = null
+                  }
+                  setEditing(note)
+                }}
                 onDelete={() => void remove(note)}
               />
             ))}
