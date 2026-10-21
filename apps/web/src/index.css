@@ -71,6 +71,7 @@
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
   --color-muted: var(--muted);
+  --color-hover: var(--hover);
   --color-subtle-foreground: var(--subtle-foreground);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
@@ -129,6 +130,7 @@
   --secondary: oklch(0.97 0.015 37.9);
   --secondary-foreground: oklch(0.243 0.025 357.4);
   --muted: oklch(0.943 0.023 34.3);
+  --hover: oklch(0.943 0.023 34.3);
   --muted-foreground: oklch(0.489 0.028 358.2);
   --subtle-foreground: oklch(0.633 0.029 0.4);
   --accent: oklch(0.97 0.015 37.9);
@@ -189,6 +191,8 @@
   --secondary: oklch(0.238 0.015 356.3);
   --secondary-foreground: oklch(0.952 0.014 34.3);
   --muted: oklch(0.176 0.009 352.1);
+  /* Muted is sunken, below the canvas in dark; hover fills lift above the card instead. */
+  --hover: oklch(0.335 0.022 353);
   --muted-foreground: oklch(0.758 0.026 358.5);
   --subtle-foreground: oklch(0.591 0.027 358.9);
   --accent: oklch(0.238 0.015 356.3);

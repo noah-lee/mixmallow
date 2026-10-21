@@ -6,16 +6,18 @@ import {
   TriangleAlertIcon,
 } from "lucide-react"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
+import { usePhone } from "@/lib/use-media-query"
 import { useTheme } from "@/providers/theme-provider"
 
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme } = useTheme()
+  const phone = usePhone()
 
   return (
     <Sonner
       theme={theme}
       className="toaster group"
-      position="bottom-center"
+      position={phone ? "bottom-center" : "bottom-right"}
       // A page with a bar fixed to the bottom raises toasts above it by setting this var.
       mobileOffset={{ bottom: "var(--toast-offset-bottom, 16px)" }}
       icons={{

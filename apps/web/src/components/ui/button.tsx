@@ -11,14 +11,14 @@ const buttonVariants = cva(
         default:
           "bg-primary text-primary-foreground hover:bg-primary-pressed disabled:bg-muted disabled:text-subtle-foreground disabled:opacity-100",
         outline:
-          "border-[1.5px] border-border-strong bg-card text-foreground hover:bg-muted aria-expanded:bg-muted",
+          "border-[1.5px] border-border-strong bg-card text-foreground hover:bg-hover aria-expanded:bg-hover",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-muted aria-expanded:bg-muted",
-        ghost: "hover:bg-muted hover:text-foreground aria-expanded:bg-muted",
+          "bg-secondary text-secondary-foreground hover:bg-hover aria-expanded:bg-hover",
+        ghost: "hover:bg-hover hover:text-foreground aria-expanded:bg-hover",
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-destructive",
         link: "text-primary-text underline-offset-4 hover:underline",
-        icon: "border-[1.5px] border-border bg-card text-foreground hover:bg-muted aria-expanded:bg-muted",
+        icon: "border-[1.5px] border-border bg-card text-foreground hover:bg-hover aria-expanded:bg-hover",
         play: "bg-primary text-primary-foreground shadow-glow hover:bg-primary-pressed",
       },
       size: {
