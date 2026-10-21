@@ -16,8 +16,9 @@ export function SiteHeader() {
       <div className="mx-auto flex h-15 max-w-280 items-center justify-between gap-2 pr-[max(0.5rem,env(safe-area-inset-right))] pl-[max(1rem,env(safe-area-inset-left))] sm:px-6 lg:px-8">
         <Link
           to="/"
-          className={`-ml-2 px-2 py-1 font-heading text-heading-3 font-extrabold ${focusRing}`}
+          className={`-ml-2 flex items-center gap-2 px-2 py-1 font-heading text-heading-3 font-extrabold ${focusRing}`}
         >
+          <img src="/favicon.svg" alt="" className="size-9 shrink-0" />
           {site.name}
         </Link>
         <div className="flex items-center gap-1">
