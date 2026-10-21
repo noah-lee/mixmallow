@@ -7,7 +7,7 @@ const linkClass =
 export function SiteFooter() {
   return (
     <footer className="border-t pb-[env(safe-area-inset-bottom)] text-sm text-muted-foreground">
-      <div className="mx-auto flex max-w-5xl flex-col items-center gap-1 px-4 py-4 sm:flex-row sm:justify-between sm:px-6">
+      <div className="mx-auto flex max-w-280 flex-col items-center gap-1 py-4 pr-[max(1rem,env(safe-area-inset-right))] pl-[max(1rem,env(safe-area-inset-left))] sm:flex-row sm:justify-between sm:px-6 lg:px-8">
         <p>
           © {new Date().getFullYear()} {site.name}
         </p>
