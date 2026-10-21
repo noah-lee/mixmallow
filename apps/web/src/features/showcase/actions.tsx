@@ -114,7 +114,7 @@ export function ButtonGroupSection() {
         <ButtonGroup>
           <Button>Share</Button>
           <ButtonGroupSeparator />
-          <Button size="icon" aria-label="More share options">
+          <Button size="icon-lg" aria-label="More share options">
             <ChevronDown />
           </Button>
         </ButtonGroup>
