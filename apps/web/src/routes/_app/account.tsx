@@ -78,7 +78,10 @@ function UsageSection() {
 
   return (
     <section aria-labelledby="usage" className="flex flex-col gap-3 py-6">
-      <h2 id="usage" className="text-sm font-medium text-muted-foreground">
+      <h2
+        id="usage"
+        className="text-label tracking-wide text-muted-foreground uppercase"
+      >
         Usage
       </h2>
       {usage.data ? (
@@ -121,7 +124,10 @@ function UsageSection() {
 function DeletionSection() {
   return (
     <section aria-labelledby="delete" className="flex flex-col gap-2 pt-6">
-      <h2 id="delete" className="text-sm font-medium text-muted-foreground">
+      <h2
+        id="delete"
+        className="text-label tracking-wide text-muted-foreground uppercase"
+      >
         Delete account
       </h2>
       <p className="text-sm text-muted-foreground">
@@ -152,7 +158,10 @@ function AppearanceSection() {
       aria-labelledby="appearance"
       className="flex flex-col gap-3 py-6 sm:flex-row sm:items-center sm:justify-between"
     >
-      <h2 id="appearance" className="text-sm font-medium text-muted-foreground">
+      <h2
+        id="appearance"
+        className="text-label tracking-wide text-muted-foreground uppercase"
+      >
         Theme
       </h2>
       <ToggleGroup
@@ -195,7 +204,10 @@ function SessionSection() {
 
   return (
     <section aria-labelledby="session" className="flex flex-col gap-3 pt-6">
-      <h2 id="session" className="text-sm font-medium text-muted-foreground">
+      <h2
+        id="session"
+        className="text-label tracking-wide text-muted-foreground uppercase"
+      >
         Session
       </h2>
       <div className="flex flex-col gap-2 sm:flex-row">
