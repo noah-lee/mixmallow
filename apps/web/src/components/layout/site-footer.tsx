@@ -11,7 +11,7 @@ export function SiteFooter() {
         <p>
           © {new Date().getFullYear()} {site.name}
         </p>
-        <nav aria-label="Legal" className="-mx-2 flex gap-2">
+        <nav aria-label="Legal" className="flex gap-2">
           <Link to="/privacy" className={linkClass}>
             Privacy
           </Link>
