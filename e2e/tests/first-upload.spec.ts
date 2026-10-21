@@ -1,10 +1,32 @@
 import { closeSync, ftruncateSync, openSync } from 'node:fs';
 import type { Page, Route } from '@playwright/test';
+import { createTestApp } from '../../apps/api/test/helpers/app.ts';
 import { wav } from '../support/audio.ts';
-import { STORAGE_ORIGIN, STORAGE_STATE, WEB_ORIGIN } from '../support/env.ts';
+import { E2E_USER, STORAGE_ORIGIN, WEB_ORIGIN } from '../support/env.ts';
 import { captureScreenshot, expect, test } from '../support/fixtures.ts';
+import { signedInUser } from '../support/session.ts';
 
-test.use({ storageState: STORAGE_STATE });
+let app: Awaited<ReturnType<typeof createTestApp>>;
+
+test.beforeAll(async () => {
+  app = await createTestApp();
+});
+
+test.afterAll(async () => {
+  await app.close();
+});
+
+// A user per test: the api keeps one pending upload per user, so tests sharing one would
+// replace each other's uploads when they run in parallel.
+test.beforeEach(async ({ context }) => {
+  const id = crypto.randomUUID();
+  const { cookies } = await signedInUser(app, {
+    email: `e2e-${id}@example.com`,
+    name: E2E_USER.name,
+    authProviderId: `e2e-${id}`,
+  });
+  await context.addCookies(cookies);
+});
 
 // No storage exists in e2e, so the browser's PUTs are always answered here.
 const STORAGE = `${STORAGE_ORIGIN}/**`;

@@ -75,34 +75,41 @@ export async function captureScreenshot(
     waitForIdle = true,
   }: { fullPage?: boolean; waitForIdle?: boolean } = {},
 ): Promise<string> {
-  const slug =
-    name.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'root';
-  const file = path.join(
-    SCREENSHOT_DIR,
-    `${slug}-${test.info().project.name}.png`,
-  );
-  mkdirSync(SCREENSHOT_DIR, { recursive: true });
+  const file = shotPath(name);
   if (waitForIdle) await page.waitForLoadState('networkidle');
   await page.screenshot({ path: file, fullPage, animations: 'disabled' });
   return file;
 }
 
-// Chromium leaves a full-page shot blank past 16,384 device px, so a long page is also
-// saved as <name>-<project>-tNN.png tiles of `tileHeight` CSS px each.
+function shotPath(name: string): string {
+  const slug =
+    name.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'root';
+  mkdirSync(SCREENSHOT_DIR, { recursive: true });
+  return path.join(SCREENSHOT_DIR, `${slug}-${test.info().project.name}.png`);
+}
+
+// Chromium leaves a full-page shot blank past 16,384 device px, so a long page is saved as
+// <name>-<project>-tNN.png tiles of `tileHeight` CSS px each instead. Each tile re-lays out
+// the whole page, so the full shot is skipped once it would come out blank anyway.
 export async function captureTiles(
   page: Page,
   name: string,
   tileHeight = 1400,
 ): Promise<string[]> {
-  const full = await captureScreenshot(page, name);
-  // A string expression: the e2e tsconfig has no DOM lib.
+  await page.waitForLoadState('networkidle');
+  // String expressions: the e2e tsconfig has no DOM lib.
   const height = Number(
     await page.evaluate('document.documentElement.scrollHeight'),
   );
+  const scale = Number(await page.evaluate('window.devicePixelRatio'));
+  const base =
+    height * scale > 16_384
+      ? shotPath(name)
+      : await captureScreenshot(page, name);
   const width = page.viewportSize()?.width ?? 0;
   const files: string[] = [];
   for (let y = 0, i = 1; y < height; y += tileHeight, i++) {
-    const file = full.replace(/\.png$/, `-t${String(i).padStart(2, '0')}.png`);
+    const file = base.replace(/\.png$/, `-t${String(i).padStart(2, '0')}.png`);
     await page.screenshot({
       path: file,
       fullPage: true,
