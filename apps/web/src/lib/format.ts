@@ -16,3 +16,17 @@ export function formatDuration(ms: number): string {
     ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}`
     : `${minutes}:${seconds}`
 }
+
+// "Oct 18", with the year when it isn't this year: "Oct 18, 2025".
+export function formatShortDate(iso: string, now = new Date()): string {
+  const date = new Date(iso)
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    ...(date.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
+  })
+}
+
+export function plural(count: number, one: string, many = `${one}s`): string {
+  return `${count} ${count === 1 ? one : many}`
+}

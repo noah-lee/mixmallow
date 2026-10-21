@@ -53,3 +53,25 @@ export async function fetchJson<S extends z.ZodType>(
   const { data } = await api.get(url, config)
   return schema.parse(data)
 }
+
+export function httpStatus(err: unknown): number | undefined {
+  return axios.isAxiosError(err) ? err.response?.status : undefined
+}
+
+export function apiErrorCode(err: unknown): string | undefined {
+  if (!axios.isAxiosError(err)) return undefined
+  const data: unknown = err.response?.data
+  return data && typeof data === "object" && "error" in data
+    ? String(data.error)
+    : undefined
+}
+
+// A 4xx won't change on retry, and a not-found state shouldn't wait out the backoff.
+export function retryUnlessClientError(
+  failureCount: number,
+  err: unknown,
+): boolean {
+  const status = httpStatus(err)
+  if (status !== undefined && status >= 400 && status < 500) return false
+  return failureCount < 2
+}

@@ -1,0 +1,143 @@
+import type { TrackSummary } from "@repo/shared/schemas"
+import { useQueryClient } from "@tanstack/react-query"
+import { Link } from "@tanstack/react-router"
+import { Ellipsis, Pencil, Trash2 } from "lucide-react"
+import { useRef, useState } from "react"
+import { toast } from "sonner"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { httpStatus } from "@/lib/api"
+import {
+  formatBytes,
+  formatDuration,
+  formatShortDate,
+  plural,
+} from "@/lib/format"
+import { removeTrack, useDeleteTrack, useRenameTrack } from "./api"
+import { ConfirmDeleteDialog } from "./confirm-delete-dialog"
+import { RenameDialog, type RenameResult } from "./rename-dialog"
+
+export function noteSummary(track: TrackSummary): string {
+  if (track.noteCount === 0) return "No notes"
+  return `${plural(track.noteCount, "note")} · ${track.doneNoteCount} done`
+}
+
+export function VersionRow({ track }: { track: TrackSummary }) {
+  const qc = useQueryClient()
+  const rename = useRenameTrack(track.projectId)
+  const remove = useDeleteTrack(track.projectId)
+  const [renaming, setRenaming] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const menuRef = useRef<HTMLButtonElement>(null)
+  const label = `v${track.version}`
+
+  const save = async (name: string): Promise<RenameResult> => {
+    try {
+      await rename.mutateAsync({ trackId: track.id, name })
+      return "saved"
+    } catch (err) {
+      const status = httpStatus(err)
+      if (status === 404) {
+        void removeTrack(qc, track.projectId, track.id)
+        return "gone"
+      }
+      return status === 400 ? "invalid" : "failed"
+    }
+  }
+
+  const confirmDelete = () =>
+    remove.mutate(track.id, {
+      onSuccess: () => setDeleting(false),
+      onError: (err) => {
+        if (httpStatus(err) === 404) {
+          setDeleting(false)
+          void removeTrack(qc, track.projectId, track.id)
+          return
+        }
+        toast.error(`Couldn't delete ${label}. Try again.`)
+      },
+    })
+
+  return (
+    <li className="flex items-start rounded-xl border bg-card">
+      <Link
+        to="/app/projects/$projectId/tracks/$trackId"
+        params={{ projectId: track.projectId, trackId: track.id }}
+        className="flex min-w-0 flex-1 items-start gap-3 rounded-xl p-4 outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <span className="mt-0.5 shrink-0 rounded-full bg-muted px-2.5 py-0.5 font-mono text-time font-semibold tabular-nums">
+          {label}
+        </span>
+        <span className="flex min-w-0 flex-col gap-1">
+          <span className="font-semibold break-words">{track.name}</span>
+          <span className="text-sm text-muted-foreground">
+            <span className="font-mono tabular-nums">
+              {formatDuration(track.durationMs)}
+            </span>{" "}
+            · {formatBytes(track.sizeBytes)} · {track.format.toUpperCase()} ·{" "}
+            {formatShortDate(track.createdAt)}
+          </span>
+          <span className="text-sm text-muted-foreground">
+            {noteSummary(track)}
+          </span>
+        </span>
+      </Link>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            ref={menuRef}
+            variant="ghost"
+            size="icon"
+            className="mt-2 mr-2"
+            aria-label={`More for ${label}`}
+          >
+            <Ellipsis />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            className="min-h-11"
+            onSelect={() => setRenaming(true)}
+          >
+            <Pencil />
+            Rename
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="min-h-11"
+            variant="destructive"
+            onSelect={() => setDeleting(true)}
+          >
+            <Trash2 />
+            Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <RenameDialog
+        open={renaming}
+        onOpenChange={setRenaming}
+        title={`Rename ${label}`}
+        description="The file stays the same; only the name you see changes."
+        currentName={track.name}
+        onSave={save}
+      />
+      <ConfirmDeleteDialog
+        open={deleting}
+        onOpenChange={setDeleting}
+        title={
+          track.noteCount > 0
+            ? `Delete ${label} and its ${plural(track.noteCount, "note")}?`
+            : `Delete ${label}?`
+        }
+        pending={remove.isPending}
+        onConfirm={confirmDelete}
+        returnFocus={() => menuRef.current?.focus()}
+      />
+    </li>
+  )
+}

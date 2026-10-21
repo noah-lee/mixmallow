@@ -4,6 +4,7 @@ import {
   type DragEvent,
   type ReactNode,
   useEffect,
+  useId,
   useRef,
   useState,
 } from "react"
@@ -21,14 +22,19 @@ const ACCEPT = Object.keys(AUDIO_FORMATS)
 
 type UploadController = ReturnType<typeof useUpload>
 
+// `row` is the project page's version of the in-progress states: a card at the top of the
+// versions list, where giving up on a failed upload removes the row.
 export function UploadPanel({
   upload,
   maxFileBytes,
+  variant = "panel",
 }: {
   upload: UploadController
   maxFileBytes: number
+  variant?: "panel" | "row"
 }) {
   const { state } = upload
+  const row = variant === "row"
   switch (state.status) {
     case "idle":
       return (
@@ -42,7 +48,10 @@ export function UploadPanel({
       return (
         <section
           aria-label="Upload"
-          className="flex flex-col items-center gap-3 rounded-4xl bg-surface px-6 py-12 text-center"
+          className={cn(
+            "flex flex-col items-center gap-3 bg-surface text-center",
+            row ? "rounded-xl px-5 py-6" : "rounded-4xl px-6 py-12",
+          )}
         >
           <Loader2 aria-hidden="true" className="size-6 animate-spin" />
           <p role="status" className="font-semibold">
@@ -55,7 +64,7 @@ export function UploadPanel({
       )
     case "uploading":
       return (
-        <FileCard prepared={state.prepared}>
+        <FileCard prepared={state.prepared} row={row}>
           <div className="flex items-center gap-3">
             <Progress
               value={state.percent}
@@ -78,7 +87,7 @@ export function UploadPanel({
       )
     case "finishing":
       return (
-        <FileCard prepared={state.prepared}>
+        <FileCard prepared={state.prepared} row={row}>
           <Progress value={100} aria-label="Upload progress" />
           <p
             role="status"
@@ -91,7 +100,7 @@ export function UploadPanel({
       )
     case "failed":
       return (
-        <FileCard prepared={state.prepared}>
+        <FileCard prepared={state.prepared} row={row}>
           <Alert variant="destructive">
             <CircleAlert />
             <AlertTitle>Upload failed</AlertTitle>
@@ -108,7 +117,7 @@ export function UploadPanel({
               className="w-full sm:w-auto"
               onClick={upload.chooseAnother}
             >
-              Choose another
+              {row ? "Remove" : "Choose another"}
             </Button>
           </div>
         </FileCard>
@@ -118,15 +127,20 @@ export function UploadPanel({
 
 function FileCard({
   prepared,
+  row,
   children,
 }: {
   prepared: PreparedFile
+  row: boolean
   children: ReactNode
 }) {
   return (
     <section
       aria-label="Upload"
-      className="flex flex-col gap-4 rounded-4xl bg-surface p-5 sm:p-6"
+      className={cn(
+        "flex flex-col gap-4 bg-surface",
+        row ? "rounded-xl p-4 sm:p-5" : "rounded-4xl p-5 sm:p-6",
+      )}
     >
       <div className="flex min-w-0 flex-col gap-1">
         <p className="font-semibold break-words">{prepared.file.name}</p>
@@ -142,16 +156,31 @@ function FileCard({
   )
 }
 
-function Dropzone({
+// `compact` is the project page's: no illustration, a single line beside the button from
+// `sm`. `notice` replaces the limits line (storage full).
+export function Dropzone({
   error,
   maxFileBytes,
   onFile,
+  compact = false,
+  title = "Add your mix",
+  description = "Drag a file here, or choose one from your computer.",
+  buttonLabel = "Choose a file",
+  disabled = false,
+  notice,
 }: {
   error: string | null
   maxFileBytes: number
   onFile: (file: File) => void
+  compact?: boolean
+  title?: string
+  description?: string
+  buttonLabel?: string
+  disabled?: boolean
+  notice?: ReactNode
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const limitsId = useId()
   const [active, setActive] = useState(false)
 
   // A file dropped beside the dropzone would otherwise open in the tab and leave the app.
@@ -167,7 +196,7 @@ function Dropzone({
 
   const onDragOver = (event: DragEvent) => {
     event.preventDefault()
-    setActive(true)
+    if (!disabled) setActive(true)
   }
   const onDragLeave = (event: DragEvent) => {
     if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
@@ -178,8 +207,29 @@ function Dropzone({
     event.preventDefault()
     setActive(false)
     const file = event.dataTransfer.files[0]
-    if (file) onFile(file)
+    if (file && !disabled) onFile(file)
   }
+
+  const button = (
+    <Button
+      className="w-full sm:w-auto"
+      aria-describedby={limitsId}
+      disabled={disabled}
+      onClick={() => inputRef.current?.click()}
+    >
+      <Upload data-icon="inline-start" />
+      {buttonLabel}
+    </Button>
+  )
+  const limits = (
+    <div id={limitsId} className="text-caption text-muted-foreground">
+      {notice ?? (
+        <p>
+          WAV, MP3, FLAC or AAC · up to {formatBytes(maxFileBytes)} per file
+        </p>
+      )}
+    </div>
+  )
 
   return (
     <div className="flex flex-col gap-3">
@@ -191,30 +241,38 @@ function Dropzone({
         onDragLeave={onDragLeave}
         onDrop={onDrop}
         className={cn(
-          "flex flex-col items-center gap-5 rounded-4xl border-2 border-dashed border-border-strong bg-surface px-5 py-8 text-center transition-colors sm:px-10 sm:py-12",
+          "flex rounded-4xl border-2 border-dashed border-border-strong bg-surface transition-colors",
           "data-active:border-primary-text data-active:bg-primary-tint",
+          compact
+            ? "flex-col gap-3 p-4 sm:flex-row-reverse sm:items-center sm:justify-between sm:gap-6 sm:py-4 sm:pr-4 sm:pl-6"
+            : "flex-col items-center gap-5 px-5 py-8 text-center sm:px-10 sm:py-12",
         )}
       >
-        <UploadIllustration />
-        <div className="flex flex-col gap-1">
-          <p className="text-heading-3">
-            {active ? "Drop it here" : "Add your mix"}
-          </p>
-          <p className="hidden text-sm text-muted-foreground sm:block">
-            Drag a file here, or choose one from your computer.
-          </p>
-        </div>
-        <Button
-          className="w-full sm:w-auto"
-          aria-describedby="upload-limits"
-          onClick={() => inputRef.current?.click()}
-        >
-          <Upload data-icon="inline-start" />
-          Choose a file
-        </Button>
-        <p id="upload-limits" className="text-caption text-muted-foreground">
-          WAV, MP3, FLAC or AAC · up to {formatBytes(maxFileBytes)} per file
-        </p>
+        {compact ? (
+          <>
+            {button}
+            <div className="flex flex-col gap-0.5 text-center sm:text-left">
+              <p className="hidden font-semibold sm:block">
+                {active ? "Drop it here" : title}
+              </p>
+              {limits}
+            </div>
+          </>
+        ) : (
+          <>
+            <UploadIllustration />
+            <div className="flex flex-col gap-1">
+              <p className="text-heading-3">
+                {active ? "Drop it here" : title}
+              </p>
+              <p className="hidden text-sm text-muted-foreground sm:block">
+                {description}
+              </p>
+            </div>
+            {button}
+            {limits}
+          </>
+        )}
         <input
           ref={inputRef}
           type="file"

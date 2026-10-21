@@ -9,11 +9,10 @@ import {
 } from "@repo/shared/schemas"
 import { useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
-import axios from "axios"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { PROJECTS_QUERY_KEY } from "@/features/projects/api"
 import { USAGE_QUERY_KEY } from "@/features/usage/api"
-import { api } from "@/lib/api"
+import { api, apiErrorCode, httpStatus } from "@/lib/api"
 import { formatBytes } from "@/lib/format"
 import { decodeAudio } from "./audio"
 
@@ -37,8 +36,11 @@ export const uploadMessages = {
     `Files can be up to ${formatBytes(maxFileBytes)}`,
   unreadable: "This file couldn't be read as audio",
   tooLong: "Tracks can be up to 6 hours long",
-  noSpace:
-    "Not enough space left for this file. Delete a version to make room.",
+  // Without a known amount (no usage yet), the sentence drops it.
+  noSpace: (leftBytes?: number) =>
+    leftBytes === undefined
+      ? "Not enough space. Delete a version to free some up."
+      : `Not enough space: ${formatBytes(leftBytes)} left. Delete a version to free some up.`,
 }
 
 type Options = {
@@ -52,18 +54,10 @@ type Options = {
 
 type Run = { controller: AbortController }
 
-function errorOf(err: unknown): {
-  status: number | undefined
-  code: string | undefined
-} {
-  if (!axios.isAxiosError(err)) return { status: undefined, code: undefined }
-  const data: unknown = err.response?.data
-  const code =
-    data && typeof data === "object" && "error" in data
-      ? String(data.error)
-      : undefined
-  return { status: err.response?.status, code }
-}
+const errorOf = (err: unknown) => ({
+  status: httpStatus(err),
+  code: apiErrorCode(err),
+})
 
 function putFile(
   target: CreateUploadResponse,
@@ -209,7 +203,9 @@ export function useUpload({
         }
         if (code === "storage_limit_reached") {
           pendingUploadId.current = null
-          setState({ status: "idle", error: uploadMessages.noSpace })
+          // The cached amount passed the client check, so it is stale; refetch and leave it out.
+          void qc.invalidateQueries({ queryKey: USAGE_QUERY_KEY })
+          setState({ status: "idle", error: uploadMessages.noSpace() })
           return
         }
         if (step === "register" && code === "validation_failed") {
@@ -239,7 +235,7 @@ export function useUpload({
       else if (file.size > maxFileBytes)
         error = uploadMessages.size(maxFileBytes)
       else if (spaceLeftBytes !== undefined && file.size > spaceLeftBytes)
-        error = uploadMessages.noSpace
+        error = uploadMessages.noSpace(spaceLeftBytes)
       if (error) {
         setState({ status: "idle", error })
         return
