@@ -41,11 +41,13 @@ export function ConfirmDeleteDialog({
         }}
       >
         <AlertDialogHeader>
-          <AlertDialogTitle className="text-balance">{title}</AlertDialogTitle>
+          <AlertDialogTitle className="text-pretty">{title}</AlertDialogTitle>
           <AlertDialogDescription>This can't be undone.</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel variant="ghost" disabled={pending}>
+            Cancel
+          </AlertDialogCancel>
           {/* A plain button, not AlertDialogAction, so the dialog stays open until the request settles. */}
           <Button variant="destructive" disabled={pending} onClick={onConfirm}>
             {pending && <Spinner data-icon="inline-start" />}
