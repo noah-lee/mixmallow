@@ -75,3 +75,17 @@ export function retryUnlessClientError(
   if (status !== undefined && status >= 400 && status < 500) return false
   return failureCount < 2
 }
+
+// The `path` of each field a `400 validation_failed` names ("/text", "/timestampMs").
+export function validationPaths(err: unknown): string[] {
+  if (!axios.isAxiosError(err)) return []
+  const data: unknown = err.response?.data
+  if (!data || typeof data !== "object" || !("details" in data)) return []
+  const { details } = data
+  if (!Array.isArray(details)) return []
+  return details.flatMap((d: unknown) =>
+    d && typeof d === "object" && "path" in d && typeof d.path === "string"
+      ? [d.path]
+      : [],
+  )
+}

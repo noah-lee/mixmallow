@@ -1,4 +1,9 @@
-import { createFileRoute, Outlet, redirect } from "@tanstack/react-router"
+import {
+  createFileRoute,
+  Outlet,
+  redirect,
+  useMatchRoute,
+} from "@tanstack/react-router"
 import { PageLayout } from "@/components/layout/page-layout"
 import { meQueryOptions } from "@/features/auth/api"
 
@@ -15,8 +20,11 @@ export const Route = createFileRoute("/_app")({
 })
 
 function AppLayout() {
+  const matchRoute = useMatchRoute()
+  // The track page goes two-column on desktop, so it needs the full content width.
+  const wide = matchRoute({ to: "/app/projects/$projectId/tracks/$trackId" })
   return (
-    <PageLayout>
+    <PageLayout {...(wide ? { className: "lg:max-w-280" } : {})}>
       <Outlet />
     </PageLayout>
   )

@@ -16,6 +16,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
       theme={theme}
       className="toaster group"
       position="bottom-center"
+      // A page with a bar fixed to the bottom raises toasts above it by setting this var.
+      mobileOffset={{ bottom: "var(--toast-offset-bottom, 16px)" }}
       icons={{
         success: <CircleCheckIcon className="size-4" />,
         info: <InfoIcon className="size-4" />,
@@ -34,6 +36,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
       toastOptions={{
         classNames: {
           toast: "cn-toast",
+          actionButton: "h-11! rounded-full! px-4! text-sm! font-bold!",
         },
       }}
       {...props}
