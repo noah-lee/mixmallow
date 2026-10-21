@@ -21,7 +21,7 @@ export const Route = createFileRoute("/_app")({
 
 function AppLayout() {
   const matchRoute = useMatchRoute()
-  // The track page goes two-column on desktop, so it needs the full content width.
+  // The track page's waveform gets the full content width on desktop.
   const wide = matchRoute({ to: "/app/projects/$projectId/tracks/$trackId" })
   return (
     <PageLayout {...(wide ? { className: "lg:max-w-280" } : {})}>

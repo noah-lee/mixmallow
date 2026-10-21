@@ -337,8 +337,8 @@ function TrackView({
   ) : null
 
   return (
-    <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start lg:gap-x-8 lg:gap-y-6">
-      <header className="flex items-start gap-2 lg:col-span-2">
+    <div className="flex flex-col gap-4 lg:gap-6">
+      <header className="flex items-start gap-2">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <Link
             to="/app/projects/$projectId"
@@ -363,16 +363,13 @@ function TrackView({
         />
       </header>
 
-      {/* On phones the player's parts join the page column so the player can stick to the top. */}
-      <div className="contents lg:sticky lg:top-21 lg:flex lg:flex-col lg:gap-4">
-        {versions && versions.length > 1 && (
-          <VersionChips versions={versions} currentId={track.id} />
-        )}
-        <div className="sticky top-[calc(3.75rem+env(safe-area-inset-top))] z-30 -mx-4 bg-background px-4 py-2 sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:p-0">
-          <PlayerPanel player={player} peaks={track.peaks} notes={notes} />
-        </div>
-        {player.failed && <AudioFailedAlert onRetry={player.retry} />}
+      {versions && versions.length > 1 && (
+        <VersionChips versions={versions} currentId={track.id} />
+      )}
+      <div className="sticky top-[calc(3.75rem+env(safe-area-inset-top))] z-30 -mx-4 bg-background px-4 py-2 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <PlayerPanel player={player} peaks={track.peaks} notes={notes} />
       </div>
+      {player.failed && <AudioFailedAlert onRetry={player.retry} />}
 
       <section
         aria-labelledby="notes-heading"
@@ -533,9 +530,9 @@ function TrackSkeleton() {
     <div
       role="status"
       aria-label="Loading track"
-      className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:gap-x-8 lg:gap-y-6"
+      className="flex flex-col gap-4 lg:gap-6"
     >
-      <div className="flex flex-col gap-2 lg:col-span-2">
+      <div className="flex flex-col gap-2">
         <Skeleton className="h-5 w-32 rounded-full" />
         <Skeleton className="h-7 w-2/3 rounded-full" />
       </div>
