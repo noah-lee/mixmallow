@@ -17,7 +17,7 @@ export function PageLayout({
       <SiteHeader />
       <main
         className={cn(
-          "mx-auto flex w-full max-w-2xl flex-1 flex-col pt-6 pr-[max(1rem,env(safe-area-inset-right))] pb-10 pl-[max(1rem,env(safe-area-inset-left))] sm:px-6 sm:pt-10",
+          "mx-auto flex w-full max-w-2xl flex-1 flex-col pt-6 pr-[max(1rem,env(safe-area-inset-right))] pb-10 pl-[max(1rem,env(safe-area-inset-left))] sm:px-6 sm:pt-10 lg:px-8",
           className,
         )}
       >

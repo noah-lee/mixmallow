@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router"
 import { site } from "@/lib/site"
 
 const linkClass =
-  "rounded-sm py-2 outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/30"
+  "rounded-sm py-2 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
 
 export function SiteFooter() {
   return (

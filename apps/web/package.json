@@ -10,7 +10,8 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
-    "@fontsource-variable/inter": "catalog:",
+    "@fontsource-variable/jetbrains-mono": "catalog:",
+    "@fontsource-variable/plus-jakarta-sans": "catalog:",
     "@repo/shared": "workspace:*",
     "@tailwindcss/vite": "catalog:",
     "@tanstack/react-query": "catalog:",
