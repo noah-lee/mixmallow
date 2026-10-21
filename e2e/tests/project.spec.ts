@@ -220,7 +220,14 @@ test('uploading, then cancel', async ({ page, context }) => {
   const { project } = await seedProject(context);
   await page.route(STORAGE, () => {});
   await openProject(page, project.id);
+  // Cancel before registration returns aborts it, leaving no upload to delete.
+  const registered = page.waitForResponse(
+    (res) =>
+      res.request().method() === 'POST' &&
+      new URL(res.url()).pathname === '/api/uploads',
+  );
   await fileInput(page).setInputFiles(MIX);
+  await registered;
 
   const uploadRow = rows(page).getByRole('region', { name: 'Upload' });
   await expect(uploadRow.getByText('Uploading…')).toBeVisible();

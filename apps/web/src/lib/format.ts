@@ -2,6 +2,7 @@ import { MB } from "@repo/shared/schemas"
 
 // Binary megabytes, matching the server's limits: "41.2 MB", "100 MB", "640 KB".
 export function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0 MB"
   if (bytes < MB) return `${Math.max(1, Math.round(bytes / 1024))} KB`
   return `${(bytes / MB).toFixed(1).replace(/\.0$/, "")} MB`
 }

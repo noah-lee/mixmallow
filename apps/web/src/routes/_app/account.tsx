@@ -1,8 +1,9 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
-import { LogOut } from "lucide-react"
+import { CircleAlert, LogOut } from "lucide-react"
 import { useRef, useState } from "react"
 import { toast } from "sonner"
 import { UserAvatar } from "@/components/layout/user-avatar"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -14,9 +15,18 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { useMe, useSignOut, useSignOutEverywhere } from "@/features/auth/api"
+import {
+  authProviderLabels,
+  useMe,
+  useSignOut,
+  useSignOutEverywhere,
+} from "@/features/auth/api"
+import { useUsage } from "@/features/usage/api"
+import { formatBytes, plural } from "@/lib/format"
+import { site } from "@/lib/site"
 import { useTheme } from "@/providers/theme-provider"
 
 export const Route = createFileRoute("/_app/account")({
@@ -44,20 +54,94 @@ function Account() {
               {me.email}
             </p>
           )}
+          {/* Static: Google is the only provider and /me doesn't return it. */}
+          <p className="text-caption text-muted-foreground">
+            Signed in with {authProviderLabels.google}
+          </p>
         </div>
       </section>
+      <Separator />
+      <UsageSection />
       <Separator />
       <AppearanceSection />
       <Separator />
       <SessionSection />
+      <Separator className="mt-6" />
+      <DeletionSection />
     </div>
   )
 }
 
+function UsageSection() {
+  const me = useMe()
+  const usage = useUsage()
+
+  return (
+    <section aria-labelledby="usage" className="flex flex-col gap-3 py-6">
+      <h2 id="usage" className="text-sm font-medium text-muted-foreground">
+        Usage
+      </h2>
+      {usage.data ? (
+        <p>
+          {usage.data.projectCount} of{" "}
+          {plural(usage.data.projectLimit, "project")} ·{" "}
+          {formatBytes(usage.data.storageUsedBytes)} of{" "}
+          {formatBytes(usage.data.storageLimitBytes)}
+        </p>
+      ) : usage.isError ? (
+        <div className="flex flex-col gap-3">
+          <Alert variant="destructive">
+            <CircleAlert />
+            <AlertTitle>Couldn't load your usage</AlertTitle>
+            <AlertDescription>
+              Check your connection and try again.
+            </AlertDescription>
+          </Alert>
+          <Button
+            variant="ghost"
+            size="lg"
+            className="w-full sm:w-auto sm:self-start"
+            onClick={() => {
+              void usage.refetch()
+              void me.refetch()
+            }}
+          >
+            Try again
+          </Button>
+        </div>
+      ) : (
+        <div role="status" aria-label="Loading usage">
+          <Skeleton className="h-6 w-60 max-w-full rounded-full" />
+        </div>
+      )}
+    </section>
+  )
+}
+
+function DeletionSection() {
+  return (
+    <section aria-labelledby="delete" className="flex flex-col gap-2 pt-6">
+      <h2 id="delete" className="text-sm font-medium text-muted-foreground">
+        Delete account
+      </h2>
+      <p className="text-sm text-muted-foreground">
+        To delete your account and all your projects, email{" "}
+        <a
+          href={`mailto:${site.contactEmail}?subject=Delete%20my%20account`}
+          className="font-medium text-primary-text underline underline-offset-4"
+        >
+          {site.contactEmail}
+        </a>{" "}
+        from the address you sign in with.
+      </p>
+    </section>
+  )
+}
+
 const THEMES = [
+  { value: "system", label: "System" },
   { value: "light", label: "Light" },
   { value: "dark", label: "Dark" },
-  { value: "system", label: "System" },
 ] as const
 
 function AppearanceSection() {
@@ -107,13 +191,7 @@ function SessionSection() {
   const everywhereRef = useRef<HTMLButtonElement>(null)
   const busy = signOut.isPending || signOutEverywhere.isPending
 
-  const callbacks = {
-    onSuccess: () => navigate({ to: "/" }),
-    onError: () => {
-      setConfirming(false)
-      toast.error("Couldn't sign out. Try again.")
-    },
-  }
+  const toLanding = () => navigate({ to: "/" })
 
   return (
     <section aria-labelledby="session" className="flex flex-col gap-3 pt-6">
@@ -125,7 +203,7 @@ function SessionSection() {
           variant="outline"
           size="lg"
           disabled={busy}
-          onClick={() => signOut.mutate(undefined, callbacks)}
+          onClick={() => signOut.mutate(undefined, { onSettled: toLanding })}
         >
           {signOut.isPending ? (
             <Spinner data-icon="inline-start" />
@@ -172,7 +250,15 @@ function SessionSection() {
             {/* A plain button, not AlertDialogAction, so the dialog stays open until the request settles. */}
             <Button
               disabled={signOutEverywhere.isPending}
-              onClick={() => signOutEverywhere.mutate(undefined, callbacks)}
+              onClick={() =>
+                signOutEverywhere.mutate(undefined, {
+                  onSuccess: toLanding,
+                  onError: () => {
+                    setConfirming(false)
+                    toast.error("Couldn't sign out everywhere. Try again.")
+                  },
+                })
+              }
             >
               {signOutEverywhere.isPending && (
                 <Spinner data-icon="inline-start" />

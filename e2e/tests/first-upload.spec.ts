@@ -164,7 +164,14 @@ test('reading', async ({ page }) => {
 test('uploading, then cancel', async ({ page }) => {
   await page.route(STORAGE, () => {});
   await openStart(page);
+  // Cancel before registration returns aborts it, leaving no upload to delete.
+  const registered = page.waitForResponse(
+    (res) =>
+      res.request().method() === 'POST' &&
+      new URL(res.url()).pathname === '/api/uploads',
+  );
   await fileInput(page).setInputFiles(MIX);
+  await registered;
   await expect(page.getByText('Uploading…')).toBeVisible();
   await expect(page.getByText(MIX.name)).toBeVisible();
   await expect(page.getByText('0:02')).toBeVisible();

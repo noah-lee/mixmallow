@@ -55,11 +55,13 @@ function useSignedOut() {
   }
 }
 
+// Signing out always succeeds in the UI: a failed request still drops the cached user,
+// though the server session (and its cookies) survives until it expires.
 export function useSignOut() {
-  const onSuccess = useSignedOut()
+  const onSettled = useSignedOut()
   return useMutation({
     mutationFn: () => api.post("/auth/logout"),
-    onSuccess,
+    onSettled,
   })
 }
 
