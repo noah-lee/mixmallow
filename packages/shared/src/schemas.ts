@@ -146,7 +146,7 @@ export type CreateUploadBody = z.infer<typeof createUploadBodySchema>;
 
 export const createUploadResponseSchema = z.object({
   uploadId: z.uuid(),
-  // Absolute for object storage, relative to the app origin for local storage.
+  // A presigned object-storage URL.
   uploadUrl: z.string(),
   method: z.literal('PUT'),
   headers: z.record(z.string(), z.string()),

@@ -1,5 +1,5 @@
 import { AUDIO_FORMATS } from "@repo/shared/schemas"
-import { CircleAlert, Loader2, Upload } from "lucide-react"
+import { CircleAlert, Upload } from "lucide-react"
 import {
   type DragEvent,
   type ReactNode,
@@ -11,6 +11,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
+import { Spinner } from "@/components/ui/spinner"
 import { formatBytes, formatDuration } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { UploadIllustration } from "./upload-illustration"
@@ -53,7 +54,7 @@ export function UploadPanel({
             row ? "rounded-xl px-5 py-6" : "rounded-4xl px-6 py-12",
           )}
         >
-          <Loader2 aria-hidden="true" className="size-6 animate-spin" />
+          <Spinner aria-hidden="true" role="presentation" className="size-6" />
           <p role="status" className="font-semibold">
             Reading waveform…
           </p>
@@ -93,7 +94,7 @@ export function UploadPanel({
             role="status"
             className="flex min-h-12 items-center gap-2 text-sm text-muted-foreground"
           >
-            <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+            <Spinner aria-hidden="true" role="presentation" />
             Almost there…
           </p>
         </FileCard>
@@ -245,7 +246,7 @@ export function Dropzone({
           "data-active:border-primary-text data-active:bg-primary-tint",
           compact
             ? "flex-col gap-3 p-4 sm:flex-row-reverse sm:items-center sm:justify-between sm:gap-6 sm:py-4 sm:pr-4 sm:pl-6"
-            : "flex-col items-center gap-5 px-5 py-8 text-center sm:px-10 sm:py-12",
+            : "flex-col items-center gap-5 px-6 py-8 text-center sm:px-10 sm:py-12",
         )}
       >
         {compact ? (
