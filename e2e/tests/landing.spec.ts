@@ -92,6 +92,7 @@ test.describe('signed in', () => {
     await captureScreenshot(page, 'landing-signed-in');
 
     await open.click();
-    await expect(page).toHaveURL(`${WEB_ORIGIN}/account`);
+    // No project yet, so the entry route sends a new user to onboarding.
+    await expect(page).toHaveURL(`${WEB_ORIGIN}/app/start`);
   });
 });

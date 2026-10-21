@@ -88,9 +88,8 @@ function Landing() {
             {/* Reserve the button's height while `me` loads, so the page doesn't jump. */}
             <div className="flex min-h-14 flex-col sm:flex-row">
               {me.data ? (
-                // Points at /account until the signed-in /app entry route exists.
                 <Button asChild size="lg" className="w-full sm:w-auto">
-                  <Link to="/account">Open {site.name}</Link>
+                  <Link to="/app">Open {site.name}</Link>
                 </Button>
               ) : (
                 !me.isLoading && (

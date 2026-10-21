@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { test as base, type ConsoleMessage, type Page } from '@playwright/test';
-import { SCREENSHOT_DIR } from './env.ts';
+import { SCREENSHOT_DIR, WEB_ORIGIN } from './env.ts';
 
 // The browser logs every non-2xx fetch as a console error. These are the app's normal
 // signed-out (401 from /auth/me and /auth/refresh) and empty-state (404) answers.
@@ -13,14 +13,43 @@ function isExpectedApiStatus(msg: ConsoleMessage): boolean {
 }
 
 // Import `test` and `expect` from here, not @playwright/test: every test then fails on an
-// uncaught page error or a console error.
-export const test = base.extend<{ failOnPageErrors: undefined }>({
+// uncaught page error or a console error. A test that forces a failure lists the console
+// errors it causes with `test.use({ expectedConsoleError: /.../ })`.
+let testsInWorker = 0;
+
+export const test = base.extend<{
+  expectedConsoleError: RegExp | null;
+  failOnPageErrors: undefined;
+  ownClientAddress: undefined;
+}>({
+  expectedConsoleError: [null, { option: true }],
+  // The api rate-limits per IP and trusts X-Forwarded-For from the loopback proxy, so
+  // without this the whole suite shares one 100-a-minute budget. TEST-NET-3 addresses,
+  // which the api doesn't treat as proxies. Only /api requests carry it: on a
+  // cross-origin request (storage) the header would need CORS approval.
+  ownClientAddress: [
+    async ({ context }, use, testInfo) => {
+      testsInWorker++;
+      const address = `203.0.${113 + (testInfo.parallelIndex % 100)}.${(testsInWorker % 254) + 1}`;
+      await context.route(`${WEB_ORIGIN}/api/**`, (route) =>
+        route.fallback({
+          headers: { ...route.request().headers(), 'x-forwarded-for': address },
+        }),
+      );
+      await use(undefined);
+    },
+    { auto: true },
+  ],
   failOnPageErrors: [
-    async ({ page }, use) => {
+    async ({ page, expectedConsoleError }, use) => {
       const errors: string[] = [];
       page.on('pageerror', (err) => errors.push(`pageerror: ${err.message}`));
       page.on('console', (msg) => {
-        if (msg.type() === 'error' && !isExpectedApiStatus(msg)) {
+        if (
+          msg.type() === 'error' &&
+          !isExpectedApiStatus(msg) &&
+          !expectedConsoleError?.test(msg.text())
+        ) {
           errors.push(`console.error: ${msg.text()} (${msg.location().url})`);
         }
       });
@@ -36,11 +65,15 @@ export const expect = test.expect;
 // Saves a full-page screenshot to e2e/screenshots/<name>-<project>.png (git-ignored) and
 // returns the path. Call it from any test after putting the page in the state to capture.
 // Pass `fullPage: false` for an open overlay: a full-page shot stretches the viewport, so a
-// fixed dialog lands mid-page instead of where the user sees it.
+// fixed dialog lands mid-page instead of where the user sees it. Pass `waitForIdle: false`
+// when the state is a request held open on purpose (network idle would never come).
 export async function captureScreenshot(
   page: Page,
   name: string,
-  { fullPage = true }: { fullPage?: boolean } = {},
+  {
+    fullPage = true,
+    waitForIdle = true,
+  }: { fullPage?: boolean; waitForIdle?: boolean } = {},
 ): Promise<string> {
   const slug =
     name.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'root';
@@ -49,7 +82,7 @@ export async function captureScreenshot(
     `${slug}-${test.info().project.name}.png`,
   );
   mkdirSync(SCREENSHOT_DIR, { recursive: true });
-  await page.waitForLoadState('networkidle');
+  if (waitForIdle) await page.waitForLoadState('networkidle');
   await page.screenshot({ path: file, fullPage, animations: 'disabled' });
   return file;
 }

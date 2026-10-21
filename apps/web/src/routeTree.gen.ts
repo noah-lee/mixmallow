@@ -15,6 +15,10 @@ import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ShowcaseRouteImport } from './routes/showcase'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AppAccountRouteImport } from './routes/_app/account'
+import { Route as AppAppIndexRouteImport } from './routes/_app/app/index'
+import { Route as AppAppStartRouteImport } from './routes/_app/app/start'
+import { Route as AppAppProjectsProjectIdIndexRouteImport } from './routes/_app/app/projects/$projectId/index'
+import { Route as AppAppProjectsProjectIdTracksTrackIdRouteImport } from './routes/_app/app/projects/$projectId/tracks/$trackId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -45,6 +49,28 @@ const AppAccountRoute = AppAccountRouteImport.update({
   path: '/account',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAppIndexRoute = AppAppIndexRouteImport.update({
+  id: '/app/',
+  path: '/app/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAppStartRoute = AppAppStartRouteImport.update({
+  id: '/app/start',
+  path: '/app/start',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAppProjectsProjectIdIndexRoute =
+  AppAppProjectsProjectIdIndexRouteImport.update({
+    id: '/app/projects/$projectId/',
+    path: '/app/projects/$projectId/',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAppProjectsProjectIdTracksTrackIdRoute =
+  AppAppProjectsProjectIdTracksTrackIdRouteImport.update({
+    id: '/app/projects/$projectId/tracks/$trackId',
+    path: '/app/projects/$projectId/tracks/$trackId',
+    getParentRoute: () => AppRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -52,6 +78,10 @@ export interface FileRoutesByFullPath {
   '/showcase': typeof ShowcaseRoute
   '/terms': typeof TermsRoute
   '/account': typeof AppAccountRoute
+  '/app/start': typeof AppAppStartRoute
+  '/app/': typeof AppAppIndexRoute
+  '/app/projects/$projectId/': typeof AppAppProjectsProjectIdIndexRoute
+  '/app/projects/$projectId/tracks/$trackId': typeof AppAppProjectsProjectIdTracksTrackIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -59,6 +89,10 @@ export interface FileRoutesByTo {
   '/showcase': typeof ShowcaseRoute
   '/terms': typeof TermsRoute
   '/account': typeof AppAccountRoute
+  '/app/start': typeof AppAppStartRoute
+  '/app': typeof AppAppIndexRoute
+  '/app/projects/$projectId': typeof AppAppProjectsProjectIdIndexRoute
+  '/app/projects/$projectId/tracks/$trackId': typeof AppAppProjectsProjectIdTracksTrackIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -68,12 +102,34 @@ export interface FileRoutesById {
   '/showcase': typeof ShowcaseRoute
   '/terms': typeof TermsRoute
   '/_app/account': typeof AppAccountRoute
+  '/_app/app/start': typeof AppAppStartRoute
+  '/_app/app/': typeof AppAppIndexRoute
+  '/_app/app/projects/$projectId/': typeof AppAppProjectsProjectIdIndexRoute
+  '/_app/app/projects/$projectId/tracks/$trackId': typeof AppAppProjectsProjectIdTracksTrackIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/privacy' | '/showcase' | '/terms' | '/account'
+  fullPaths:
+    | '/'
+    | '/privacy'
+    | '/showcase'
+    | '/terms'
+    | '/account'
+    | '/app/start'
+    | '/app/'
+    | '/app/projects/$projectId/'
+    | '/app/projects/$projectId/tracks/$trackId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/privacy' | '/showcase' | '/terms' | '/account'
+  to:
+    | '/'
+    | '/privacy'
+    | '/showcase'
+    | '/terms'
+    | '/account'
+    | '/app/start'
+    | '/app'
+    | '/app/projects/$projectId'
+    | '/app/projects/$projectId/tracks/$trackId'
   id:
     | '__root__'
     | '/'
@@ -82,6 +138,10 @@ export interface FileRouteTypes {
     | '/showcase'
     | '/terms'
     | '/_app/account'
+    | '/_app/app/start'
+    | '/_app/app/'
+    | '/_app/app/projects/$projectId/'
+    | '/_app/app/projects/$projectId/tracks/$trackId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -136,15 +196,52 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccountRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/app/': {
+      id: '/_app/app/'
+      path: '/app'
+      fullPath: '/app/'
+      preLoaderRoute: typeof AppAppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/app/start': {
+      id: '/_app/app/start'
+      path: '/app/start'
+      fullPath: '/app/start'
+      preLoaderRoute: typeof AppAppStartRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/app/projects/$projectId/': {
+      id: '/_app/app/projects/$projectId/'
+      path: '/app/projects/$projectId'
+      fullPath: '/app/projects/$projectId/'
+      preLoaderRoute: typeof AppAppProjectsProjectIdIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/app/projects/$projectId/tracks/$trackId': {
+      id: '/_app/app/projects/$projectId/tracks/$trackId'
+      path: '/app/projects/$projectId/tracks/$trackId'
+      fullPath: '/app/projects/$projectId/tracks/$trackId'
+      preLoaderRoute: typeof AppAppProjectsProjectIdTracksTrackIdRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
   AppAccountRoute: typeof AppAccountRoute
+  AppAppStartRoute: typeof AppAppStartRoute
+  AppAppIndexRoute: typeof AppAppIndexRoute
+  AppAppProjectsProjectIdIndexRoute: typeof AppAppProjectsProjectIdIndexRoute
+  AppAppProjectsProjectIdTracksTrackIdRoute: typeof AppAppProjectsProjectIdTracksTrackIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppAccountRoute: AppAccountRoute,
+  AppAppStartRoute: AppAppStartRoute,
+  AppAppIndexRoute: AppAppIndexRoute,
+  AppAppProjectsProjectIdIndexRoute: AppAppProjectsProjectIdIndexRoute,
+  AppAppProjectsProjectIdTracksTrackIdRoute:
+    AppAppProjectsProjectIdTracksTrackIdRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

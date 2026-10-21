@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 import { testDatabaseUrl } from '@repo/db/testing';
 import { TEST_ENV } from '../apps/api/test/helpers/config.ts';
-import { API_PORT, WEB_ORIGIN, WEB_PORT } from './support/env.ts';
+import { API_PORT, S3_ENDPOINT, WEB_ORIGIN, WEB_PORT } from './support/env.ts';
 
 // `pnpm e2e:shots` sets SHOT_ROUTES and runs only the screenshot spec.
 const shots = Boolean(process.env.SHOT_ROUTES);
@@ -47,6 +47,7 @@ export default defineConfig({
         HOST: '127.0.0.1',
         PORT: String(API_PORT),
         APP_ORIGIN: WEB_ORIGIN,
+        S3_ENDPOINT,
       },
       reuseExistingServer: false,
       stdout: 'ignore',
