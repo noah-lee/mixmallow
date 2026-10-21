@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router"
 import { site } from "@/lib/site"
 
 const linkClass =
-  "rounded-sm py-2 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+  "inline-flex min-h-11 items-center rounded-sm px-2 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
 
 export function SiteFooter() {
   return (
@@ -11,7 +11,7 @@ export function SiteFooter() {
         <p>
           © {new Date().getFullYear()} {site.name}
         </p>
-        <nav aria-label="Legal" className="flex gap-4">
+        <nav aria-label="Legal" className="-mx-2 flex gap-2">
           <Link to="/privacy" className={linkClass}>
             Privacy
           </Link>

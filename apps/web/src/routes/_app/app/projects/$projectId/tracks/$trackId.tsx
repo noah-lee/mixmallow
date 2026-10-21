@@ -459,7 +459,7 @@ function TrackView({
                 }
               }}
             >
-              <DrawerHeader className="text-left">
+              <DrawerHeader>
                 <DrawerTitle>
                   {editing ? "Edit note" : "Add a note"}
                 </DrawerTitle>

@@ -140,14 +140,12 @@ export function RenameDialog({
     return (
       <Drawer open={open} onOpenChange={setOpen}>
         <DrawerContent>
-          <DrawerHeader className="text-left">
+          <DrawerHeader>
             <DrawerTitle>{title}</DrawerTitle>
             <DrawerDescription>{description}</DrawerDescription>
           </DrawerHeader>
           <div className="px-4">{form}</div>
-          <DrawerFooter className="pb-[max(1rem,env(safe-area-inset-bottom))]">
-            {actions}
-          </DrawerFooter>
+          <DrawerFooter>{actions}</DrawerFooter>
         </DrawerContent>
       </Drawer>
     )
