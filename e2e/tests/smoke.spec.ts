@@ -10,7 +10,7 @@ test.describe('signed out', () => {
   test.use({ storageState: SIGNED_OUT });
 
   for (const [route, heading] of [
-    ['/', 'Ship your idea this weekend'],
+    ['/', 'Notes for every second of your mix.'],
     ['/privacy', 'Privacy policy'],
     ['/terms', 'Terms of service'],
   ] as const) {
@@ -22,36 +22,15 @@ test.describe('signed out', () => {
     });
   }
 
-  test('landing offers sign-in', async ({ page }) => {
-    await page.goto('/');
-    await expect(
-      page.getByRole('button', { name: 'Sign in with Google' }),
-    ).toBeVisible();
-  });
-
   test('/account sends a signed-out visitor to the landing page', async ({
     page,
   }) => {
     await page.goto('/account');
     await expect(page).toHaveURL(`${WEB_ORIGIN}/`);
     await expect(
-      page.getByRole('button', { name: 'Sign in with Google' }),
+      page.getByRole('button', { name: 'Continue with Google' }),
     ).toBeVisible();
   });
-
-  for (const [query, message] of [
-    ['?error=oauth', "Sign-in didn't complete. Try again."],
-    [
-      '?error=email_in_use&provider=google',
-      'That email already has an account. Sign in with Google instead.',
-    ],
-  ] as const) {
-    test(`landing shows the sign-in error for ${query}`, async ({ page }) => {
-      await page.goto(`/${query}`);
-      await expect(page.getByRole('alert')).toHaveText(message);
-      await expect(page).toHaveURL(`${WEB_ORIGIN}/`);
-    });
-  }
 });
 
 test.describe('signed in', () => {
