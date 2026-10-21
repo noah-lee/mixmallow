@@ -23,9 +23,8 @@ function Privacy() {
       <LegalSection title="What we collect">
         <p>
           <strong className="font-semibold">From your Google account.</strong>{" "}
-          You sign in with Google. {site.name} asks only for the basic{" "}
-          <code>openid</code>, <code>email</code> and <code>profile</code>{" "}
-          scopes, and stores:
+          You sign in with Google. {site.name} asks only for the basic openid,
+          email and profile scopes, and stores:
         </p>
         <ul>
           <li>your email address</li>
@@ -135,8 +134,9 @@ function Privacy() {
 
       <LegalSection title="Changes">
         <p>
-          If this policy changes, the date above will be updated. Significant
-          changes will be announced in the app.
+          If this policy changes, the date above will be updated and the new
+          version applies from then. If you don't agree with a change, you can
+          ask for your account to be deleted.
         </p>
       </LegalSection>
 

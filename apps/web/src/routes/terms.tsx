@@ -42,8 +42,9 @@ function Terms() {
             up to {PROJECT_LIMIT} {PROJECT_LIMIT === 1 ? "project" : "projects"}
           </li>
           <li>
-            up to {formatBytes(STORAGE_LIMIT_BYTES)} of stored audio in total,
-            with each file up to {formatBytes(MAX_FILE_BYTES)}
+            up to {formatBytes(STORAGE_LIMIT_BYTES)} of stored audio in total
+            {MAX_FILE_BYTES < STORAGE_LIMIT_BYTES &&
+              `, with each file up to ${formatBytes(MAX_FILE_BYTES)}`}
           </li>
           <li>up to {NOTE_LIMIT_PER_TRACK} notes on each version</li>
         </ul>
@@ -69,9 +70,9 @@ function Terms() {
         </p>
         <p>
           By uploading a file, you give {site.name} permission only to store it,
-          read it to draw its waveform, and play it back to you. It isn't
-          shared, published or used for anything else, and the permission ends
-          when you delete the file.
+          show its waveform, and play it back to you. It isn't shared, published
+          or used for anything else, and the permission ends when you delete
+          that version, its project or your account.
         </p>
         <p>
           Only upload audio you own or have permission to use. You're
