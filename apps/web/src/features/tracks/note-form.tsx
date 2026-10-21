@@ -18,6 +18,10 @@ export type NoteSaveResult =
   | "invalid-time"
   | "failed"
 
+// What the user has typed so far. The caller keeps it so the form can remount (it moves
+// between the inline column and the phone sheet at the breakpoint) without losing it.
+export type NoteDraft = { text: string; pinnedMs: number | null }
+
 const COUNT_FROM = 1800
 const NUDGE_MS = 1000
 
@@ -36,6 +40,8 @@ export function NoteForm({
   disabled = false,
   autoFocus = false,
   alwaysShowCancel = true,
+  draft,
+  onDraftChange,
   onSave,
   onCancel,
 }: {
@@ -47,6 +53,8 @@ export function NoteForm({
   disabled?: boolean
   autoFocus?: boolean
   alwaysShowCancel?: boolean
+  draft?: NoteDraft | undefined
+  onDraftChange?: (draft: NoteDraft | null) => void
   onSave: (body: {
     timestampMs: number
     text: string
@@ -56,8 +64,10 @@ export function NoteForm({
   const textId = useId()
   const errorId = useId()
   const countId = useId()
-  const [pinnedMs, setPinnedMs] = useState<number | null>(initialTimeMs ?? null)
-  const [text, setText] = useState(initialText)
+  const [pinnedMs, setPinnedMs] = useState<number | null>(
+    draft ? draft.pinnedMs : (initialTimeMs ?? null),
+  )
+  const [text, setText] = useState(draft?.text ?? initialText)
   const [error, setError] = useState<string | null>(null)
   const [timeError, setTimeError] = useState(false)
   const [failed, setFailed] = useState(false)
@@ -70,13 +80,19 @@ export function NoteForm({
 
   const timeMs = pinnedMs ?? Math.round(playheadMs)
   const pin = () => {
-    if (pinnedMs === null) setPinnedMs(timeMs)
+    if (pinnedMs !== null) return pinnedMs
+    setPinnedMs(timeMs)
+    onDraftChange?.({ text, pinnedMs: timeMs })
+    return timeMs
   }
   const nudge = (delta: number) => {
-    setPinnedMs(Math.min(durationMs, Math.max(0, timeMs + delta)))
+    const next = Math.min(durationMs, Math.max(0, timeMs + delta))
+    setPinnedMs(next)
+    onDraftChange?.({ text, pinnedMs: next })
     setTimeError(false)
   }
   const reset = () => {
+    onDraftChange?.(null)
     setPinnedMs(initialTimeMs ?? null)
     setText(initialText)
     setError(null)
@@ -97,6 +113,7 @@ export function NoteForm({
       text: text.trim(),
     }).finally(() => setSaving(false))
     if (result === "saved" || result === "closed") {
+      onDraftChange?.(null)
       setPinnedMs(null)
       setText("")
       return
@@ -162,8 +179,9 @@ export function NoteForm({
           }
           onFocus={pin}
           onChange={(event) => {
-            pin()
+            const pinned = pin()
             setText(event.target.value)
+            onDraftChange?.({ text: event.target.value, pinnedMs: pinned })
             if (error) setError(textError(event.target.value))
           }}
         />

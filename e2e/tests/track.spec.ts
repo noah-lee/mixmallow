@@ -146,7 +146,7 @@ const currentTime = (page: Page) => page.getByTestId('current-time');
 const noteField = (page: Page) => page.getByLabel('Note', { exact: true });
 const isPhone = () => test.info().project.name === 'mobile';
 // Shots of an open form are viewport-sized: a full-page capture resizes the viewport, which
-// crosses the desktop breakpoint and remounts the form without its draft.
+// crosses the desktop breakpoint and moves the form out of the phone sheet.
 
 async function openTrack(page: Page, projectId: string, trackId: string) {
   await page.goto(trackUrl(projectId, trackId));
@@ -334,6 +334,31 @@ test('adding a note at the playhead, nudged', async ({ page, context }) => {
   ).toBeVisible();
   await expect.poll(() => markedNotes(page)).toBe(7);
   if (!isPhone()) await expect(noteField(page)).toHaveValue('');
+});
+
+test('a note draft survives crossing the desktop breakpoint', async ({
+  page,
+  context,
+}) => {
+  const { project, track } = await seedTrack(context);
+  await openTrack(page, project.id, track.id);
+  await waitForAudio(page);
+  await startNote(page);
+  await noteField(page).fill('Hi-hats too bright');
+  await page.getByRole('button', { name: '1 second later' }).click();
+
+  const size = page.viewportSize();
+  if (!size) throw new Error('no viewport');
+  await page.setViewportSize(
+    isPhone() ? { width: 1280, height: 800 } : { width: 390, height: 844 },
+  );
+  if (!isPhone()) await page.getByRole('button', { name: 'Add note' }).click();
+  await expect(noteField(page)).toHaveValue('Hi-hats too bright');
+  const form = page.locator('form').filter({ has: noteField(page) });
+  await expect(form.getByText('0:01')).toBeVisible();
+
+  await page.setViewportSize(size);
+  await expect(noteField(page)).toHaveValue('Hi-hats too bright');
 });
 
 test('adding: validation', async ({ page, context }) => {

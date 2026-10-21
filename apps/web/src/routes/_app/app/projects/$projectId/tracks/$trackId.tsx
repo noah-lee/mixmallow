@@ -44,7 +44,11 @@ import {
   useNoteCache,
   useUpdateNote,
 } from "@/features/tracks/api"
-import { NoteForm, type NoteSaveResult } from "@/features/tracks/note-form"
+import {
+  type NoteDraft,
+  NoteForm,
+  type NoteSaveResult,
+} from "@/features/tracks/note-form"
 import { NoteRow } from "@/features/tracks/note-row"
 import { AudioFailedAlert, PlayerPanel } from "@/features/tracks/player-panel"
 import { TrackMenu } from "@/features/tracks/track-menu"
@@ -169,6 +173,15 @@ function TrackView({
   const [editing, setEditing] = useState<Note | null>(null)
   // Phones only: the bottom sheet for a new note, opened at the playhead.
   const [adding, setAdding] = useState<{ timeMs: number } | null>(null)
+  const draftRef = useRef<{ key: string; draft: NoteDraft } | null>(null)
+  const draftKey = editing ? `edit-${editing.id}` : "add"
+  const draftProps = {
+    draft:
+      draftRef.current?.key === draftKey ? draftRef.current.draft : undefined,
+    onDraftChange: (draft: NoteDraft | null) => {
+      draftRef.current = draft ? { key: draftKey, draft } : null
+    },
+  }
 
   const atLimit = notes.length >= NOTE_LIMIT_PER_TRACK
   const doneCount = notes.filter((n) => n.done).length
@@ -303,6 +316,7 @@ function TrackView({
       initialTimeMs={editing.timestampMs}
       initialText={editing.text}
       autoFocus
+      {...draftProps}
       onSave={(body) => saveEdit(editing, body)}
       onCancel={() => setEditing(null)}
     />
@@ -315,6 +329,7 @@ function TrackView({
       autoFocus={Boolean(adding)}
       alwaysShowCancel={Boolean(adding)}
       disabled={atLimit}
+      {...draftProps}
       onSave={saveNew}
       onCancel={() => setAdding(null)}
     />
@@ -431,6 +446,7 @@ function TrackView({
             open={Boolean(adding || editing)}
             onOpenChange={(open) => {
               if (open) return
+              draftRef.current = null
               setAdding(null)
               setEditing(null)
             }}
