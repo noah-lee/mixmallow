@@ -70,8 +70,8 @@ function SheetContent({
           <SheetPrimitive.Close data-slot="sheet-close" asChild>
             <Button
               variant="ghost"
-              className="absolute top-4 right-4 bg-secondary"
-              size="icon-sm"
+              className="absolute top-3 right-3 bg-secondary"
+              size="icon"
             >
               <XIcon />
               <span className="sr-only">Close</span>
@@ -111,7 +111,7 @@ function SheetTitle({
     <SheetPrimitive.Title
       data-slot="sheet-title"
       className={cn(
-        "font-heading text-base font-medium text-foreground",
+        "pr-10 font-heading text-heading-2 text-foreground",
         className,
       )}
       {...props}

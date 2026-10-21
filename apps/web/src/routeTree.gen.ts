@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as ShowcaseRouteImport } from './routes/showcase'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AppAccountRouteImport } from './routes/_app/account'
 
@@ -29,6 +30,11 @@ const PrivacyRoute = PrivacyRouteImport.update({
   path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ShowcaseRoute = ShowcaseRouteImport.update({
+  id: '/showcase',
+  path: '/showcase',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
   path: '/terms',
@@ -43,12 +49,14 @@ const AppAccountRoute = AppAccountRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/privacy': typeof PrivacyRoute
+  '/showcase': typeof ShowcaseRoute
   '/terms': typeof TermsRoute
   '/account': typeof AppAccountRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/privacy': typeof PrivacyRoute
+  '/showcase': typeof ShowcaseRoute
   '/terms': typeof TermsRoute
   '/account': typeof AppAccountRoute
 }
@@ -57,21 +65,30 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
   '/privacy': typeof PrivacyRoute
+  '/showcase': typeof ShowcaseRoute
   '/terms': typeof TermsRoute
   '/_app/account': typeof AppAccountRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/privacy' | '/terms' | '/account'
+  fullPaths: '/' | '/privacy' | '/showcase' | '/terms' | '/account'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/privacy' | '/terms' | '/account'
-  id: '__root__' | '/' | '/_app' | '/privacy' | '/terms' | '/_app/account'
+  to: '/' | '/privacy' | '/showcase' | '/terms' | '/account'
+  id:
+    | '__root__'
+    | '/'
+    | '/_app'
+    | '/privacy'
+    | '/showcase'
+    | '/terms'
+    | '/_app/account'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   PrivacyRoute: typeof PrivacyRoute
+  ShowcaseRoute: typeof ShowcaseRoute
   TermsRoute: typeof TermsRoute
 }
 
@@ -96,6 +113,13 @@ declare module '@tanstack/react-router' {
       path: '/privacy'
       fullPath: '/privacy'
       preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/showcase': {
+      id: '/showcase'
+      path: '/showcase'
+      fullPath: '/showcase'
+      preLoaderRoute: typeof ShowcaseRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/terms': {
@@ -129,6 +153,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   PrivacyRoute: PrivacyRoute,
+  ShowcaseRoute: ShowcaseRoute,
   TermsRoute: TermsRoute,
 }
 export const routeTree = rootRouteImport
