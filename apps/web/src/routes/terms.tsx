@@ -1,13 +1,20 @@
+import {
+  MAX_FILE_BYTES,
+  NOTE_LIMIT_PER_TRACK,
+  PROJECT_LIMIT,
+  STORAGE_LIMIT_BYTES,
+} from "@repo/shared/schemas"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import {
   ContactLink,
   LegalPage,
   LegalSection,
 } from "@/features/legal/legal-page"
+import { formatBytes } from "@/lib/format"
 import { site } from "@/lib/site"
 
-// Public: Google's OAuth brand verification reads this page. A starting template; keep it in
-// step with the product, and bump site.legalUpdated when it changes.
+// Public: Google's OAuth brand verification reads this page. The plan limits come from the
+// shared constants the api enforces; bump site.legalUpdated when the wording changes.
 export const Route = createFileRoute("/terms")({
   component: Terms,
 })
@@ -22,25 +29,53 @@ function Terms() {
 
       <LegalSection title="The service">
         <p>
-          {site.name} is offered with a free plan and an optional paid
-          subscription. Features may change or be removed at any time.
+          {site.name} lets you upload versions of a track, play them back and
+          pin notes to moments in them. It's free and takes no payments.
+          Features may change or be removed over time.
+        </p>
+      </LegalSection>
+
+      <LegalSection title="Free plan limits">
+        <p>Each account can have:</p>
+        <ul>
+          <li>
+            up to {PROJECT_LIMIT} {PROJECT_LIMIT === 1 ? "project" : "projects"}
+          </li>
+          <li>
+            up to {formatBytes(STORAGE_LIMIT_BYTES)} of stored audio in total,
+            with each file up to {formatBytes(MAX_FILE_BYTES)}
+          </li>
+          <li>up to {NOTE_LIMIT_PER_TRACK} notes on each version</li>
+        </ul>
+        <p>
+          Your account page shows how much space you've used. Deleting a version
+          frees its space. These limits may change, and any change will be shown
+          here.
         </p>
       </LegalSection>
 
       <LegalSection title="Your account">
         <p>
           You sign in with your Google account and are responsible for activity
-          on it. The data you enter belongs to you. The{" "}
-          <Link to="/privacy">privacy policy</Link> explains how it's handled
-          and how to delete it.
+          on it. The <Link to="/privacy">privacy policy</Link> explains what's
+          stored and how to delete your account.
         </p>
       </LegalSection>
 
-      <LegalSection title="Subscriptions">
+      <LegalSection title="Your music">
         <p>
-          Paid subscriptions renew automatically until you cancel. You can
-          cancel any time from your account, and you keep access until the end
-          of the period you've paid for. Payments are processed by Stripe.
+          You keep all rights to the audio you upload and the notes you write.{" "}
+          {site.name} doesn't claim any ownership of them.
+        </p>
+        <p>
+          By uploading a file, you give {site.name} permission only to store it,
+          read it to draw its waveform, and play it back to you. It isn't
+          shared, published or used for anything else, and the permission ends
+          when you delete the file.
+        </p>
+        <p>
+          Only upload audio you own or have permission to use. You're
+          responsible for what you upload.
         </p>
       </LegalSection>
 
@@ -48,12 +83,30 @@ function Terms() {
         <p>Don't:</p>
         <ul>
           <li>
+            upload anything you don't have the rights to, or anything unlawful
+          </li>
+          <li>
+            use {site.name} to share or distribute files with other people
+          </li>
+          <li>
             try to access other users' data or break the service's security
           </li>
-          <li>send automated or excessive requests</li>
-          <li>use {site.name} for anything unlawful</li>
+          <li>
+            send automated or excessive requests, or try to get around the plan
+            limits
+          </li>
         </ul>
-        <p>Access may be suspended for accounts that break these rules.</p>
+        <p>
+          Accounts that break these rules may be suspended, and files that break
+          them may be removed.
+        </p>
+      </LegalSection>
+
+      <LegalSection title="Keep your own copies">
+        <p>
+          {site.name} isn't a backup service. Keep the original of every file
+          you upload somewhere else.
+        </p>
       </LegalSection>
 
       <LegalSection title="No warranty">
@@ -68,7 +121,8 @@ function Terms() {
       <LegalSection title="Changes">
         <p>
           These terms may be updated. The date above shows the latest version,
-          and continuing to use {site.name} means you accept it.
+          and continuing to use {site.name} means you accept it. Significant
+          changes will be announced in the app.
         </p>
       </LegalSection>
 
