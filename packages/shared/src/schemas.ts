@@ -103,6 +103,22 @@ export const usageResponseSchema = z.object({
 
 export type UsageResponse = z.infer<typeof usageResponseSchema>;
 
+// Collaborators per project; the owner is not counted.
+export const COLLABORATOR_LIMIT = 10;
+
+export const projectRoleSchema = z.enum(['owner', 'collaborator']);
+
+export type ProjectRole = z.infer<typeof projectRoleSchema>;
+
+// What other users may see of someone. Never carries an email.
+export const personSchema = z.object({
+  id: z.uuid(),
+  name: z.string().nullable(),
+  picture: z.url().nullable(),
+});
+
+export type Person = z.infer<typeof personSchema>;
+
 export const projectSchema = z.object({
   id: z.uuid(),
   name: z.string(),
@@ -112,12 +128,19 @@ export const projectSchema = z.object({
   latestTrack: z
     .object({ id: z.uuid(), version: z.number().int().positive() })
     .nullable(),
+  role: projectRoleSchema,
+  owner: personSchema,
+  collaboratorCount: count,
+  // When the caller joined; null for the owner.
+  joinedAt: z.iso.datetime().nullable(),
 });
 
 export type Project = z.infer<typeof projectSchema>;
 
+// `items` are the caller's own projects; `shared` the ones they joined, newest joined first.
 export const projectListResponseSchema = z.object({
   items: z.array(projectSchema),
+  shared: z.array(projectSchema),
 });
 
 export type ProjectListResponse = z.infer<typeof projectListResponseSchema>;

@@ -13,6 +13,7 @@ import {
   createUpload,
 } from './helpers/factories.ts';
 import { createTestSession } from './helpers/session.ts';
+import { shareProject } from './helpers/sharing.ts';
 import { registerUpload, writeStoredObject } from './helpers/uploads.ts';
 
 let app: FastifyInstance;
@@ -69,6 +70,15 @@ describe('GET /api/usage', () => {
     expect(res.json()).toMatchObject({
       projectCount: 1,
       storageUsedBytes: 5 * MB,
+    });
+  });
+
+  it("leaves joined projects out of a collaborator's counts", async () => {
+    const { collaborator } = await shareProject(app);
+    const res = await getUsage(collaborator.cookies);
+    expect(res.json()).toMatchObject({
+      projectCount: 0,
+      storageUsedBytes: 0,
     });
   });
 

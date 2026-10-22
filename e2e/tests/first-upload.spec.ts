@@ -34,6 +34,7 @@ const CORS = { 'Access-Control-Allow-Origin': '*' };
 
 const PROJECT_ID = '3f0c6f8e-6a43-4c55-9d1e-0f6f2b0d1a01';
 const TRACK_ID = '9b7e2c4d-1f3a-4e5b-8c6d-2a1b0c9d8e02';
+const OWNER_ID = '5d2a8f1c-3b4e-4a6d-9e7f-1c2b3a4d5e03';
 
 const MIX = {
   name: 'Midnight Drive.wav',
@@ -86,8 +87,13 @@ function projectList() {
         updatedAt: now,
         trackCount: 1,
         latestTrack: { id: TRACK_ID, version: 1 },
+        role: 'owner',
+        owner: { id: OWNER_ID, name: 'Maya', picture: null },
+        collaboratorCount: 0,
+        joinedAt: null,
       },
     ],
+    shared: [],
   };
 }
 

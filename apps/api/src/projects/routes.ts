@@ -12,22 +12,19 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { decodeCursor, encodeCursor } from '../lib/pagination.ts';
 import { toTrackSummary, trackSummaryFields } from '../tracks/queries.ts';
-import {
-  deleteProject,
-  findProject,
-  listProjects,
-  ownsProject,
-} from './queries.ts';
+import { projectRole } from './access.ts';
+import { deleteProject, findProject, listProjects } from './queries.ts';
 
 const trackCursorSchema = z.object({ version: z.number().int().positive() });
 
 const notFound = { error: 'not_found' } as const;
+const forbidden = { error: 'forbidden' } as const;
 
 export const projectRoutes: FastifyPluginAsyncZod = async (app) => {
   const auth = { onRequest: [app.authenticate] };
 
   app.get('/', auth, async (req): Promise<ProjectListResponse> => {
-    return { items: await listProjects(app.db, req.user.sub) };
+    return listProjects(app.db, req.user.sub);
   });
 
   app.get(
@@ -53,8 +50,16 @@ export const projectRoutes: FastifyPluginAsyncZod = async (app) => {
       ...auth,
       schema: { params: projectIdParamsSchema, body: renameBodySchema },
     },
-    async (req, reply): Promise<Project | typeof notFound> => {
+    async (
+      req,
+      reply,
+    ): Promise<Project | typeof notFound | typeof forbidden> => {
       const { projectId } = req.params;
+      const role = await projectRole(app.db, req.user.sub, projectId);
+      if (role !== 'owner') {
+        reply.code(role ? 403 : 404);
+        return role ? forbidden : notFound;
+      }
       const updated = await app.db
         .update(projects)
         .set({ name: req.body.name })
@@ -78,6 +83,15 @@ export const projectRoutes: FastifyPluginAsyncZod = async (app) => {
     '/:projectId',
     { ...auth, schema: { params: projectIdParamsSchema } },
     async (req, reply) => {
+      const role = await projectRole(
+        app.db,
+        req.user.sub,
+        req.params.projectId,
+      );
+      if (role === 'collaborator') {
+        reply.code(403);
+        return forbidden;
+      }
       const keys = await deleteProject(
         app.db,
         req.user.sub,
@@ -105,7 +119,7 @@ export const projectRoutes: FastifyPluginAsyncZod = async (app) => {
       const { projectId } = req.params;
       const { cursor, limit } = req.query;
       const after = cursor ? decodeCursor(cursor, trackCursorSchema) : null;
-      if (!(await ownsProject(app.db, req.user.sub, projectId))) {
+      if (!(await projectRole(app.db, req.user.sub, projectId))) {
         reply.code(404);
         return notFound;
       }
@@ -115,7 +129,6 @@ export const projectRoutes: FastifyPluginAsyncZod = async (app) => {
         .where(
           and(
             eq(tracks.projectId, projectId),
-            eq(tracks.userId, req.user.sub),
             after ? lt(tracks.version, after.version) : undefined,
           ),
         )

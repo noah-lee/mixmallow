@@ -8,6 +8,7 @@ import {
 } from '@repo/shared/schemas';
 import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import { trackAccess } from '../projects/access.ts';
 import {
   findTrackDetail,
   toTrackSummary,
@@ -15,12 +16,14 @@ import {
 } from './queries.ts';
 
 const notFound = { error: 'not_found' } as const;
+const forbidden = { error: 'forbidden' } as const;
 
 export const trackRoutes: FastifyPluginAsyncZod = async (app) => {
   const options = {
     onRequest: [app.authenticate],
     schema: { params: trackIdParamsSchema },
   };
+  // Writes are owner-only; tracks.user_id is always the project owner.
   const owned = (userId: string, trackId: string) =>
     and(eq(tracks.id, trackId), eq(tracks.userId, userId));
 
@@ -28,11 +31,14 @@ export const trackRoutes: FastifyPluginAsyncZod = async (app) => {
     '/:trackId',
     options,
     async (req, reply): Promise<TrackDetail | typeof notFound> => {
-      const track = await findTrackDetail(
+      const access = await trackAccess(
         app.db,
         req.user.sub,
         req.params.trackId,
       );
+      const track = access
+        ? await findTrackDetail(app.db, req.params.trackId)
+        : null;
       if (!track) {
         reply.code(404);
         return notFound;
@@ -44,7 +50,19 @@ export const trackRoutes: FastifyPluginAsyncZod = async (app) => {
   app.patch(
     '/:trackId',
     { ...options, schema: { ...options.schema, body: renameBodySchema } },
-    async (req, reply): Promise<TrackSummary | typeof notFound> => {
+    async (
+      req,
+      reply,
+    ): Promise<TrackSummary | typeof notFound | typeof forbidden> => {
+      const access = await trackAccess(
+        app.db,
+        req.user.sub,
+        req.params.trackId,
+      );
+      if (access?.role === 'collaborator') {
+        reply.code(403);
+        return forbidden;
+      }
       const where = owned(req.user.sub, req.params.trackId);
       const updated = await app.db
         .update(tracks)
@@ -65,6 +83,11 @@ export const trackRoutes: FastifyPluginAsyncZod = async (app) => {
 
   // Notes and the transcode job cascade; the stored files go after the commit.
   app.delete('/:trackId', options, async (req, reply) => {
+    const access = await trackAccess(app.db, req.user.sub, req.params.trackId);
+    if (access?.role === 'collaborator') {
+      reply.code(403);
+      return forbidden;
+    }
     const [removed] = await app.db
       .delete(tracks)
       .where(owned(req.user.sub, req.params.trackId))
@@ -85,12 +108,16 @@ export const trackRoutes: FastifyPluginAsyncZod = async (app) => {
     '/:trackId/audio',
     options,
     async (req, reply): Promise<AudioUrlResponse | typeof notFound> => {
-      const [track] = await app.db
-        .select({
-          key: sql<string>`coalesce(${tracks.previewKey}, ${tracks.storageKey})`,
-        })
-        .from(tracks)
-        .where(owned(req.user.sub, req.params.trackId));
+      const { trackId } = req.params;
+      const access = await trackAccess(app.db, req.user.sub, trackId);
+      const [track] = access
+        ? await app.db
+            .select({
+              key: sql<string>`coalesce(${tracks.previewKey}, ${tracks.storageKey})`,
+            })
+            .from(tracks)
+            .where(eq(tracks.id, trackId))
+        : [];
       if (!track) {
         reply.code(404);
         return notFound;

@@ -1,16 +1,18 @@
-import { notes, projects, tracks } from '@repo/db';
+import { notes, projectMembers, projects, tracks } from '@repo/db';
 import { NAME_MAX } from '@repo/shared/schemas';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp } from './helpers/app.ts';
 import {
+  createMember,
   createNote,
   createProject,
   createTrack,
   createUpload,
 } from './helpers/factories.ts';
 import { createTestSession, type TestSession } from './helpers/session.ts';
+import { shareProject } from './helpers/sharing.ts';
 import { writeStoredObject } from './helpers/uploads.ts';
 
 let app: FastifyInstance;
@@ -45,7 +47,7 @@ describe('GET /api/projects', () => {
       cookies,
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ items: [] });
+    expect(res.json()).toEqual({ items: [], shared: [] });
   });
 
   it('lists only the own project, with its latest track and track count', async () => {
@@ -68,8 +70,17 @@ describe('GET /api/projects', () => {
           updatedAt: expect.any(String),
           trackCount: 2,
           latestTrack: { id: latest.id, version: 2 },
+          role: 'owner',
+          owner: {
+            id: session.user.id,
+            name: session.user.name,
+            picture: null,
+          },
+          collaboratorCount: 0,
+          joinedAt: null,
         },
       ],
+      shared: [],
     });
   });
 });
@@ -221,7 +232,7 @@ describe('DELETE /api/projects/:projectId', () => {
       url: '/api/projects',
       cookies: session.cookies,
     });
-    expect(list.json()).toEqual({ items: [] });
+    expect(list.json()).toEqual({ items: [], shared: [] });
   });
 
   it("deletes every track's original and preview objects", async () => {
@@ -358,5 +369,155 @@ describe('GET /api/projects/:projectId/tracks', () => {
     const { cookies } = await createTestSession(app);
     const res = await list(`/api/projects/${project.id}/tracks`, cookies);
     expect(res.statusCode).toBe(404);
+  });
+});
+
+describe('shared projects', () => {
+  const get = (url: string, session: TestSession) =>
+    app.inject({ method: 'GET', url, cookies: session.cookies });
+
+  it('lists a joined project under shared, newest joined first, with its owner', async () => {
+    const first = await shareProject(app);
+    const second = await createProject(app.db, {
+      userId: first.owner.user.id,
+    });
+    const member = await createMember(app.db, {
+      projectId: second.id,
+      userId: first.collaborator.user.id,
+      createdAt: new Date(first.member.createdAt.getTime() + 1000),
+    });
+
+    const res = await get('/api/projects', first.collaborator);
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.items).toEqual([]);
+    expect(body.shared.map((p: { id: string }) => p.id)).toEqual([
+      second.id,
+      first.project.id,
+    ]);
+    expect(body.shared[0]).toMatchObject({
+      role: 'collaborator',
+      owner: { id: first.owner.user.id, name: 'Maya', picture: null },
+      joinedAt: member.createdAt.toISOString(),
+      collaboratorCount: 1,
+    });
+    expect(body.shared[1]).toMatchObject({
+      trackCount: 3,
+      latestTrack: { id: first.tracks[2]?.id, version: 3 },
+    });
+  });
+
+  it("keeps a joined project out of the owner's shared list and counts its collaborators", async () => {
+    const { owner, project } = await shareProject(app);
+    const res = await get('/api/projects', owner);
+    expect(res.json()).toMatchObject({
+      items: [{ id: project.id, role: 'owner', collaboratorCount: 1 }],
+      shared: [],
+    });
+  });
+
+  it('shows a collaborator the project with their role and join time', async () => {
+    const { collaborator, project, member, owner } = await shareProject(app);
+    const res = await get(`/api/projects/${project.id}`, collaborator);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      id: project.id,
+      role: 'collaborator',
+      owner: { id: owner.user.id, name: 'Maya' },
+      collaboratorCount: 1,
+      joinedAt: member.createdAt.toISOString(),
+    });
+  });
+
+  it('lists every version to a collaborator', async () => {
+    const { collaborator, project } = await shareProject(app);
+    const res = await get(`/api/projects/${project.id}/tracks`, collaborator);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().items.map((t: { version: number }) => t.version)).toEqual(
+      [3, 2, 1],
+    );
+  });
+
+  it('404s the project and its versions for an outsider', async () => {
+    const { outsider, project } = await shareProject(app);
+    for (const url of [
+      `/api/projects/${project.id}`,
+      `/api/projects/${project.id}/tracks`,
+    ]) {
+      const res = await get(url, outsider);
+      expect(res.statusCode).toBe(404);
+      expect(res.json()).toEqual({ error: 'not_found' });
+    }
+  });
+
+  it('forbids a collaborator to rename the project', async () => {
+    const { collaborator, project } = await shareProject(app);
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/projects/${project.id}`,
+      cookies: collaborator.cookies,
+      payload: { name: 'Taken over' },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toEqual({ error: 'forbidden' });
+    const [row] = await app.db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, project.id));
+    expect(row?.name).toBe(project.name);
+  });
+
+  it('forbids a collaborator to delete the project and keeps its rows and files', async () => {
+    const { collaborator, project, tracks: versions } = await shareProject(app);
+    const track = versions[0];
+    if (!track) throw new Error('no track');
+    writeStoredObject(app, track.storageKey, 10);
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/projects/${project.id}`,
+      cookies: collaborator.cookies,
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toEqual({ error: 'forbidden' });
+    expect(
+      await app.db.select().from(projects).where(eq(projects.id, project.id)),
+    ).toHaveLength(1);
+    expect(
+      await app.db
+        .select()
+        .from(tracks)
+        .where(eq(tracks.projectId, project.id)),
+    ).toHaveLength(3);
+    expect(await app.storage.headSize(track.storageKey)).toBe(10);
+  });
+
+  it('drops a deleted project from the shared list and 404s its pages', async () => {
+    const {
+      owner,
+      collaborator,
+      project,
+      tracks: versions,
+    } = await shareProject(app);
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/projects/${project.id}`,
+      cookies: owner.cookies,
+    });
+    expect(res.statusCode).toBe(204);
+    expect(
+      await app.db
+        .select()
+        .from(projectMembers)
+        .where(eq(projectMembers.projectId, project.id)),
+    ).toEqual([]);
+
+    const list = await get('/api/projects', collaborator);
+    expect(list.json()).toEqual({ items: [], shared: [] });
+    for (const url of [
+      `/api/projects/${project.id}`,
+      `/api/tracks/${versions[2]?.id}`,
+    ]) {
+      expect((await get(url, collaborator)).statusCode).toBe(404);
+    }
   });
 });

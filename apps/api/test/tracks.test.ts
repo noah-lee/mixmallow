@@ -12,6 +12,7 @@ import {
 } from './helpers/factories.ts';
 import { keyFromUrl } from './helpers/memory-storage.ts';
 import { createTestSession } from './helpers/session.ts';
+import { shareProject } from './helpers/sharing.ts';
 import { uploadTrack, writeStoredObject } from './helpers/uploads.ts';
 
 let app: FastifyInstance;
@@ -314,5 +315,76 @@ describe('GET /api/tracks/:trackId/audio', () => {
     const { cookies } = await createTestSession(app);
     const res = await audioUrl(track.id, cookies);
     expect(res.statusCode).toBe(404);
+  });
+});
+
+describe('tracks of a shared project', () => {
+  async function sharedTrack() {
+    const shared = await shareProject(app);
+    const track = shared.tracks[2];
+    if (!track) throw new Error('no track');
+    writeStoredObject(app, track.storageKey, 10);
+    return { ...shared, track };
+  }
+
+  it('gives a collaborator the track and a signed URL for its audio', async () => {
+    const { collaborator, track } = await sharedTrack();
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/api/tracks/${track.id}`,
+      cookies: collaborator.cookies,
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toMatchObject({ id: track.id, version: 3 });
+
+    const audio = await app.inject({
+      method: 'GET',
+      url: `/api/tracks/${track.id}/audio`,
+      cookies: collaborator.cookies,
+    });
+    expect(audio.statusCode).toBe(200);
+    const { url } = audioUrlResponseSchema.parse(audio.json());
+    expect(keyFromUrl(url)).toBe(track.storageKey);
+  });
+
+  it('404s the track and its audio for an outsider', async () => {
+    const { outsider, track } = await sharedTrack();
+    for (const url of [
+      `/api/tracks/${track.id}`,
+      `/api/tracks/${track.id}/audio`,
+    ]) {
+      const res = await app.inject({
+        method: 'GET',
+        url,
+        cookies: outsider.cookies,
+      });
+      expect(res.statusCode).toBe(404);
+    }
+  });
+
+  it('forbids a collaborator to rename a version', async () => {
+    const { collaborator, track } = await sharedTrack();
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/tracks/${track.id}`,
+      cookies: collaborator.cookies,
+      payload: { name: 'Mine now' },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toEqual({ error: 'forbidden' });
+    expect((await trackRow(track.id))?.name).toBe(track.name);
+  });
+
+  it('forbids a collaborator to delete a version and keeps its file', async () => {
+    const { collaborator, track } = await sharedTrack();
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/tracks/${track.id}`,
+      cookies: collaborator.cookies,
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toEqual({ error: 'forbidden' });
+    expect(await trackRow(track.id)).toBeDefined();
+    expect(await app.storage.headSize(track.storageKey)).toBe(10);
   });
 });

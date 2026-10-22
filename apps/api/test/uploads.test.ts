@@ -17,6 +17,7 @@ import {
 } from './helpers/factories.ts';
 import { keyFromUrl } from './helpers/memory-storage.ts';
 import { createTestSession, type TestSession } from './helpers/session.ts';
+import { shareProject } from './helpers/sharing.ts';
 import {
   completeUpload,
   putUpload,
@@ -457,5 +458,42 @@ describe('DELETE /api/uploads/:uploadId', () => {
     expect(res.statusCode).toBe(404);
     expect(await uploadRows(owner.user.id)).toHaveLength(1);
     expect(await app.storage.headSize(upload.storageKey)).toBe(10);
+  });
+});
+
+describe('uploads by a collaborator', () => {
+  it('forbids uploading a version into a joined project', async () => {
+    const { collaborator, project } = await shareProject(app);
+    const res = await register(collaborator, {
+      projectId: project.id,
+      fileName: 'a.wav',
+      sizeBytes: 10,
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toEqual({ error: 'forbidden' });
+    expect(await uploadRows(collaborator.user.id)).toEqual([]);
+  });
+
+  it("creates the collaborator's own project from a first upload and leaves the owner's usage", async () => {
+    const { owner, collaborator } = await shareProject(app);
+    const usage = (session: TestSession) =>
+      app.inject({
+        method: 'GET',
+        url: '/api/usage',
+        cookies: session.cookies,
+      });
+    const before = (await usage(owner)).json();
+
+    const result = await uploadTrack(app, collaborator, { bytes: audio });
+    const [project] = await app.db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, result.projectId));
+    expect(project?.userId).toBe(collaborator.user.id);
+    expect((await usage(owner)).json()).toEqual(before);
+    expect((await usage(collaborator)).json()).toMatchObject({
+      projectCount: 1,
+      storageUsedBytes: audio.length,
+    });
   });
 });

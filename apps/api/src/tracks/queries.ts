@@ -4,7 +4,7 @@ import {
   type TrackDetail,
   type TrackSummary,
 } from '@repo/shared/schemas';
-import { and, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 // Plain SQL with an explicit outer reference: inside a subquery Drizzle renders columns
 // unqualified, so `${tracks.id}` would bind to notes.id.
@@ -41,15 +41,15 @@ export function toTrackSummary(row: TrackSummaryRow): TrackSummary {
   };
 }
 
+// No access check: callers resolve the caller's role first.
 export async function findTrackDetail(
   db: Database | Transaction,
-  userId: string,
   trackId: string,
 ): Promise<TrackDetail | null> {
   const [row] = await db
     .select({ ...trackSummaryFields, peaks: tracks.peaks })
     .from(tracks)
-    .where(and(eq(tracks.id, trackId), eq(tracks.userId, userId)));
+    .where(eq(tracks.id, trackId));
   if (!row) return null;
   const { peaks, ...summary } = row;
   return { ...toTrackSummary(summary), peaks };

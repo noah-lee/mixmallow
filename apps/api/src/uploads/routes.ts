@@ -14,7 +14,7 @@ import {
 } from '@repo/shared/schemas';
 import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
-import { ownsProject } from '../projects/queries.ts';
+import { projectRole } from '../projects/access.ts';
 import { storageKey } from '../storage/driver.ts';
 import { findTrackDetail } from '../tracks/queries.ts';
 import { enqueueTranscode, needsPreview } from '../transcode/queue.ts';
@@ -70,8 +70,12 @@ export const uploadRoutes: FastifyPluginAsyncZod = async (app) => {
 
       const result = await app.db.transaction(async (tx) => {
         await lockUser(tx, userId);
-        if (projectId && !(await ownsProject(tx, userId, projectId))) {
-          return { error: 'not_found', status: 404 } as const;
+        if (projectId) {
+          const role = await projectRole(tx, userId, projectId);
+          if (!role) return { error: 'not_found', status: 404 } as const;
+          if (role !== 'owner') {
+            return { error: 'forbidden', status: 403 } as const;
+          }
         }
         const limit = await limitError(tx, userId, { projectId, sizeBytes });
         if (limit) return { error: limit, status: 403 } as const;
@@ -219,7 +223,7 @@ export const uploadRoutes: FastifyPluginAsyncZod = async (app) => {
         reply.code(result.status);
         return { error: result.error };
       }
-      const track = await findTrackDetail(app.db, userId, result.trackId);
+      const track = await findTrackDetail(app.db, result.trackId);
       if (!track) throw new Error('completed track not found');
       reply.code(201);
       return {
