@@ -127,9 +127,8 @@ const row = (page: Page, label: string) =>
     .getByRole('listitem')
     .filter({ hasText: new RegExp(`^${label}`) });
 const fileInput = (page: Page) => page.locator('input[type="file"]');
-// The header has a "Projects" link too, so stay inside the page.
 const backLink = (page: Page) =>
-  page.getByRole('main').getByRole('link', { name: 'Projects' });
+  page.getByRole('link', { name: 'Back to projects' });
 
 async function openProject(page: Page, id: string) {
   await page.goto(projectUrl(id));
@@ -349,6 +348,9 @@ test('no versions', async ({ page, context }) => {
   await openProject(page, project.id);
   await expect(page.getByText('No versions yet')).toBeVisible();
   await expect(
+    page.getByText('Upload a mix to keep working on this song.'),
+  ).toBeVisible();
+  await expect(
     page.getByRole('button', { name: 'Upload a version' }),
   ).toBeEnabled();
   await expect(page.getByRole('region', { name: 'Versions' })).toBeHidden();
@@ -517,6 +519,7 @@ test('delete a version', async ({ page, context }) => {
   await expect(dialog).toBeHidden();
   await expect(rows(page).getByRole('listitem')).toHaveCount(2);
   await expect(row(page, 'v2')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Versions' })).toBeFocused();
   await expect(page.getByText('51.9 MB of 100 MB')).toBeVisible();
 });
 

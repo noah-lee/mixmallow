@@ -60,6 +60,13 @@ function Project({ projectId }: { projectId: string }) {
   const tracks = useQuery(trackListQueryOptions(projectId))
   const usage = useUsage().data
   const [gone, setGone] = useState(false)
+  const titleRef = useRef<HTMLHeadingElement>(null)
+  const versionsRef = useRef<HTMLHeadingElement>(null)
+  // A deleted row takes its menu button with it.
+  const focusAfterDelete = useCallback(
+    () => (versionsRef.current ?? titleRef.current)?.focus(),
+    [],
+  )
 
   const maxFileBytes = usage?.maxFileBytes ?? MAX_FILE_BYTES
   const spaceLeftBytes = usage
@@ -111,7 +118,7 @@ function Project({ projectId }: { projectId: string }) {
   const dropzone = (empty: boolean) => (
     <Dropzone
       compact={!empty}
-      title={empty ? "No versions yet" : "Upload a new version"}
+      title={empty ? "No versions yet" : "Drag a new mix here"}
       description="Upload a mix to keep working on this song."
       buttonLabel={empty ? "Upload a version" : "Upload a new version"}
       error={uploadError}
@@ -134,7 +141,13 @@ function Project({ projectId }: { projectId: string }) {
       <BackToProjects />
       <div className="flex items-start gap-2">
         <div className="flex min-w-0 flex-1 flex-col gap-3">
-          <h1 className="text-heading-1 break-words">{project.data.name}</h1>
+          <h1
+            ref={titleRef}
+            tabIndex={-1}
+            className="text-heading-1 break-words outline-none"
+          >
+            {project.data.name}
+          </h1>
           {usage ? (
             <UsageMeter
               usedBytes={usage.storageUsedBytes}
@@ -173,8 +186,10 @@ function Project({ projectId }: { projectId: string }) {
           {dropzone(false)}
           <section aria-labelledby="versions" className="flex flex-col gap-3">
             <h2
+              ref={versionsRef}
               id="versions"
-              className="text-label tracking-wide text-muted-foreground uppercase"
+              tabIndex={-1}
+              className="text-label tracking-wide text-muted-foreground uppercase outline-none"
             >
               Versions
             </h2>
@@ -189,7 +204,11 @@ function Project({ projectId }: { projectId: string }) {
                 </li>
               )}
               {versions.map((track) => (
-                <VersionRow key={track.id} track={track} />
+                <VersionRow
+                  key={track.id}
+                  track={track}
+                  onDeleted={focusAfterDelete}
+                />
               ))}
             </ul>
           </section>
@@ -302,7 +321,8 @@ function BackToProjects() {
   return (
     <Link
       to="/app/projects"
-      className="-mb-3 -ml-2 inline-flex min-h-11 items-center gap-1.5 self-start rounded-full px-2 text-sm font-semibold text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      aria-label="Back to projects"
+      className="-mt-2 -mb-3 -ml-2 inline-flex min-h-11 items-center gap-1.5 self-start rounded-full px-2 text-sm font-semibold text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
     >
       <ArrowLeft aria-hidden className="size-4" />
       Projects

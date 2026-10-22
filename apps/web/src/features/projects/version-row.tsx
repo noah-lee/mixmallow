@@ -27,7 +27,13 @@ export function noteSummary(track: TrackSummary): string {
   return `${plural(track.noteCount, "note")} · ${track.doneNoteCount} done`
 }
 
-export function VersionRow({ track }: { track: TrackSummary }) {
+export function VersionRow({
+  track,
+  onDeleted,
+}: {
+  track: TrackSummary
+  onDeleted: () => void
+}) {
   const qc = useQueryClient()
   const rename = useRenameTrack(track.projectId)
   const remove = useDeleteTrack(track.projectId)
@@ -91,7 +97,7 @@ export function VersionRow({ track }: { track: TrackSummary }) {
         <DropdownMenuTrigger asChild>
           <Button
             ref={menuRef}
-            variant="ghost"
+            variant="icon"
             size="icon"
             className="mt-2 mr-2"
             aria-label={`More for ${label}`}
@@ -136,7 +142,10 @@ export function VersionRow({ track }: { track: TrackSummary }) {
         }
         pending={remove.isPending}
         onConfirm={confirmDelete}
-        returnFocus={() => menuRef.current?.focus()}
+        // A successful delete can unmount the row before the dialog closes.
+        returnFocus={() =>
+          menuRef.current ? menuRef.current.focus() : onDeleted()
+        }
       />
     </li>
   )

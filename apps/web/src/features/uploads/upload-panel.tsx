@@ -165,7 +165,7 @@ export function Dropzone({
   onFile,
   compact = false,
   title = "Add your mix",
-  description = "Drag a file here, or choose one from your computer.",
+  description,
   buttonLabel = "Choose a file",
   disabled = false,
   notice,
@@ -266,8 +266,15 @@ export function Dropzone({
               <p className="text-heading-3">
                 {active ? "Drop it here" : title}
               </p>
-              <p className="hidden text-sm text-muted-foreground sm:block">
-                {description}
+              {/* The default line is about dragging, which phones can't do. */}
+              <p
+                className={cn(
+                  "text-sm text-muted-foreground",
+                  !description && "hidden sm:block",
+                )}
+              >
+                {description ??
+                  "Drag a file here, or choose one from your computer."}
               </p>
             </div>
             {button}
