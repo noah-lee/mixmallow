@@ -117,7 +117,7 @@ Each file exports a `Route` via `createFileRoute`. Public pages sit at the top l
 
 ## VPS deployment
 
-The repo's `Dockerfile` builds one image: the Fastify api, which also serves the built SPA (everything outside `/api`, with a fallback to `index.html` for client-side routes). `docker-compose.yml` runs it as the single `app` service, on the external `shared-pg` network (created by the [postgres](../postgres) companion repo) so it reaches `postgres:5432`.
+The repo's `Dockerfile` builds one image: the Fastify api, which also serves the built SPA (everything outside `/api`, with a fallback to `index.html` for client-side routes), plus the transcode worker and `ffmpeg`. `docker-compose.yml` runs it as two services, `app` and `worker` (which turns WAV/FLAC uploads into AAC previews for playback), both on the external `shared-pg` network (created by the [postgres](../postgres) companion repo) so they reach `postgres:5432`.
 
 ```
 Internet :443 → host nginx (TLS) → 127.0.0.1:$PORT → app container (/api/* + SPA) → postgres:5432
@@ -140,7 +140,11 @@ cp .env.example .env       # paste DATABASE_URL_INTERNAL as DATABASE_URL, set
 bash deploy.sh             # build, validate env + migrate, start, prune old images
 ```
 
-`deploy.sh` is also the redeploy command: pull, then run it again. Its migrate step validates the whole env, then migrates with the new image while the old container keeps serving, so a bad `.env` or a failed migration stops the deploy before anything is swapped.
+`deploy.sh` is also the redeploy command: pull, then run it again. Its migrate step validates the whole env, then migrates with the new image while the old container keeps serving, so a bad `.env` or a failed migration stops the deploy before anything is swapped. It then queues a preview for every WAV/FLAC track that has none (`dist/backfill-previews.js`, a no-op on later deploys).
+
+**Spaces egress (one-time host setup):** the worker downloads each lossless original once to transcode it. To keep that download off the billed Spaces outbound transfer, the Droplet must be in the bucket's region (TOR1) and use the VPC-local DNS resolver as its only resolver, so the bucket hostname resolves to DigitalOcean's internal network. The app has no setting for this; it uses `S3_ENDPOINT` as is.
+
+Locally, `pnpm --filter @repo/api dev:worker` runs the worker (it needs `ffmpeg` and `ffprobe` on the PATH), and `pnpm --filter @repo/api backfill:previews` queues the backfill.
 
 The container is published on `127.0.0.1:$PORT` (default 3000), reachable only from the VPS itself (Docker-published ports bypass UFW, so binding all interfaces would expose plain http). `PORT` is the one port setting: the api listens on it, compose publishes it, and the healthcheck probes it. Put a TLS-terminating proxy on the host in front of it and send **every** request there, `/api/` included. For a host nginx:
 

@@ -5,6 +5,9 @@ export default defineConfig({
     server: 'src/server.ts',
     // Resolves its migrations folder as `../migrations` from dist/; the Dockerfile copies it there.
     migrate: 'src/migrate.ts',
+    // The transcode worker, run as its own compose service from the same image.
+    worker: 'src/worker.ts',
+    'backfill-previews': 'src/backfill-previews.ts',
   },
   platform: 'node',
   target: 'node24',

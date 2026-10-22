@@ -9,6 +9,8 @@
   ],
   "scripts": {
     "dev": "node --watch --env-file-if-exists=../../.env src/server.ts",
+    "dev:worker": "node --watch --env-file-if-exists=../../.env src/worker.ts",
+    "backfill:previews": "node --env-file-if-exists=../../.env src/backfill-previews.ts",
     "build": "tsdown",
     "start": "node --enable-source-maps dist/server.js",
     "typecheck": "tsc --noEmit",

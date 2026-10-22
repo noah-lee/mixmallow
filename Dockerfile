@@ -17,6 +17,8 @@ RUN pnpm --filter @repo/api --filter @repo/web build
 RUN pnpm deploy --legacy --filter=@repo/api --prod /out
 
 FROM node:24-alpine AS runtime
+# The transcode worker (dist/worker.js, same image) shells out to ffprobe and ffmpeg.
+RUN apk add --no-cache ffmpeg
 WORKDIR /app
 COPY --from=builder --chown=node:node /out ./
 # dist/ resolves both of these as siblings: ../migrations (migrate.js) and ../public (the SPA).

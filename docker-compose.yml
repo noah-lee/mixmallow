@@ -1,9 +1,10 @@
 # Production-style compose for VPS deployment.
 # Local dev uses `pnpm dev` directly; this file is only for deploying.
 #
-# One container: the api serves the SPA and /api/* on PORT. It's published on
-# localhost only, and the host's TLS nginx proxies every request to it. The
-# container joins `shared-pg`, the external network created by the postgres
+# Two containers from one image: `app` serves the SPA and /api/* on PORT,
+# published on localhost only, and the host's TLS nginx proxies every request
+# to it; `worker` transcodes uploads into playback previews and serves nothing.
+# Both join `shared-pg`, the external network created by the postgres
 # companion repo, to reach `postgres:5432`.
 #
 # Prereq on the VPS: the postgres repo's compose is up, and the shared-pg
@@ -12,6 +13,8 @@
 services:
   app:
     build: .
+    # Named so `worker` runs the image this service builds.
+    image: mixmallow-app
     restart: unless-stopped
     # Docker's default json-file driver never rotates, so logs would grow until the disk fills.
     logging:
@@ -30,6 +33,26 @@ services:
       # Localhost only: Docker-published ports bypass UFW, so binding all
       # interfaces would expose plain http around the host's TLS nginx.
       - "127.0.0.1:${PORT:-3000}:${PORT:-3000}"
+    networks:
+      - shared-pg
+
+  worker:
+    image: mixmallow-app
+    command: ["node", "--enable-source-maps", "dist/worker.js"]
+    restart: unless-stopped
+    # The image's healthcheck probes the api over HTTP, which the worker doesn't serve.
+    healthcheck:
+      disable: true
+    # On SIGTERM the worker kills ffmpeg and hands its job back; this is ample for that.
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    env_file: .env
+    environment:
+      NODE_ENV: production
     networks:
       - shared-pg
 
