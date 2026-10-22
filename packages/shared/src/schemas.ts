@@ -145,6 +145,49 @@ export const projectListResponseSchema = z.object({
 
 export type ProjectListResponse = z.infer<typeof projectListResponseSchema>;
 
+// 32 random bytes, base64url: what the api generates for a share link.
+export const inviteTokenSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
+
+// Loose on purpose: a malformed token must reach the handler and answer 404, like an
+// unknown one, rather than a 400 that tells them apart.
+export const inviteTokenParamsSchema = z.object({ token: z.string() });
+
+// The public invite card: nothing beyond the project name and who owns it.
+export const inviteResponseSchema = z.object({
+  projectName: z.string(),
+  owner: personSchema.omit({ id: true }),
+});
+
+export type InviteResponse = z.infer<typeof inviteResponseSchema>;
+
+// Where a member lands: the newest version, or the project page when it has none.
+export const landingSchema = z.object({
+  projectId: z.uuid(),
+  latestTrack: z
+    .object({ id: z.uuid(), version: z.number().int().positive() })
+    .nullable(),
+});
+
+export type Landing = z.infer<typeof landingSchema>;
+
+// Non-null when the caller already owns or has joined the project.
+export const inviteMembershipResponseSchema = z.object({
+  membership: landingSchema.nullable(),
+});
+
+export type InviteMembershipResponse = z.infer<
+  typeof inviteMembershipResponseSchema
+>;
+
+export const joinResponseSchema = landingSchema;
+
+export type JoinResponse = z.infer<typeof joinResponseSchema>;
+
+// null while the project has no share link.
+export const inviteLinkResponseSchema = z.object({ url: z.url().nullable() });
+
+export type InviteLinkResponse = z.infer<typeof inviteLinkResponseSchema>;
+
 export const trackSummarySchema = z.object({
   id: z.uuid(),
   projectId: z.uuid(),

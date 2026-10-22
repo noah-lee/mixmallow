@@ -7,7 +7,7 @@ import {
   uploads,
   users,
 } from '@repo/db';
-import type { Project } from '@repo/shared/schemas';
+import type { Landing, Project } from '@repo/shared/schemas';
 import { and, desc, eq, isNotNull, or, type SQL, sql } from 'drizzle-orm';
 
 // Plain SQL with an explicit outer reference: inside a subquery Drizzle renders columns
@@ -92,6 +92,19 @@ export async function findProject(
     [],
   );
   return project ?? null;
+}
+
+export async function landingFor(
+  db: Database | Transaction,
+  projectId: string,
+): Promise<Landing> {
+  const [latest] = await db
+    .select({ id: tracks.id, version: tracks.version })
+    .from(tracks)
+    .where(eq(tracks.projectId, projectId))
+    .orderBy(desc(tracks.version))
+    .limit(1);
+  return { projectId, latestTrack: latest ?? null };
 }
 
 // Deletes the project (tracks, notes, transcode jobs and its pending upload cascade) and

@@ -4,6 +4,7 @@ import {
   createNoteBodySchema,
   createUploadBodySchema,
   fileExtension,
+  inviteTokenSchema,
   MAX_FILE_BYTES,
   meResponseSchema,
   NAME_MAX,
@@ -168,5 +169,23 @@ describe('returnPathSchema', () => {
     ['a delete character', '/app\u007f'],
   ])('rejects %s', (_label, path) => {
     expect(returnPathSchema.safeParse(path).success).toBe(false);
+  });
+});
+
+describe('inviteTokenSchema', () => {
+  it('accepts 43 base64url characters', () => {
+    const token = 'aZ09_-'.repeat(8).slice(0, 43);
+    expect(inviteTokenSchema.safeParse(token).success).toBe(true);
+  });
+
+  it.each([
+    ['too short', 'a'.repeat(42)],
+    ['too long', 'a'.repeat(44)],
+    ['padding', `${'a'.repeat(42)}=`],
+    ['a slash', `${'a'.repeat(42)}/`],
+    ['a plus', `${'a'.repeat(42)}+`],
+    ['empty', ''],
+  ])('rejects %s', (_, token) => {
+    expect(inviteTokenSchema.safeParse(token).success).toBe(false);
   });
 });

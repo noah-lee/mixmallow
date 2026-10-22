@@ -13,7 +13,9 @@ import {
 } from 'fastify-type-provider-zod';
 import { authPlugin, authRoutesPlugin } from './auth/plugin.ts';
 import type { Config } from './config.ts';
+import { inviteRoutes } from './invites/routes.ts';
 import { noteRoutes } from './notes/routes.ts';
+import { memberRoutes } from './projects/members-routes.ts';
 import { projectRoutes } from './projects/routes.ts';
 import type { StorageDriver } from './storage/driver.ts';
 import { storagePlugin } from './storage/plugin.ts';
@@ -139,6 +141,8 @@ export async function buildApp(
       await api.register(authRoutesPlugin);
       await api.register(usageRoutes, { prefix: '/usage' });
       await api.register(projectRoutes, { prefix: '/projects' });
+      await api.register(memberRoutes, { prefix: '/projects' });
+      await api.register(inviteRoutes, { prefix: '/invites' });
       await api.register(uploadRoutes, { prefix: '/uploads' });
       await api.register(trackRoutes, { prefix: '/tracks' });
       await api.register(noteRoutes);
