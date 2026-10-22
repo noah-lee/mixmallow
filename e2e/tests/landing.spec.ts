@@ -298,4 +298,64 @@ test.describe('signed in with next', () => {
     expect(refreshes).toBe(1);
     expect(urls).toEqual([landing]);
   });
+
+  test('several requests expiring together redirect once', async ({
+    page,
+    context,
+  }) => {
+    const project = await signInWithProject(context);
+    await page.goto('/app/projects');
+    const projectLink = page.getByRole('link', { name: /Midnight Drive/ });
+    await expect(projectLink).toBeVisible();
+
+    const failed = new Set<string>();
+    await page.route('**/api/**', (route) => {
+      failed.add(new URL(route.request().url()).pathname);
+      return route.fulfill({ status: 401, json: { error: 'unauthorized' } });
+    });
+    const landing = `${WEB_ORIGIN}/?next=%2Fapp%2Fprojects%2F${project.id}`;
+    const landings: string[] = [];
+    page.on('framenavigated', (frame) => {
+      if (frame === page.mainFrame() && frame.url() === landing) {
+        landings.push(frame.url());
+      }
+    });
+
+    // The project page loads the project and its versions at once; both fail.
+    await projectLink.click();
+    await expect(page).toHaveURL(landing);
+    await expect(notice(page)).toHaveText('Sign in to continue.');
+    expect(failed).toContain(`/api/projects/${project.id}`);
+    expect(failed).toContain(`/api/projects/${project.id}/tracks`);
+    expect(landings).toHaveLength(1);
+  });
+});
+
+test.describe('refresh unavailable', () => {
+  test.use({ expectedConsoleError: /status of 503 / });
+
+  test('a failed refresh that is not a 401 keeps the user signed in', async ({
+    page,
+    context,
+  }) => {
+    const project = await signInWithProject(context);
+    await page.goto(`/app/projects/${project.id}`);
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Midnight Drive' }),
+    ).toBeVisible();
+
+    await page.route('**/api/**', (route) =>
+      new URL(route.request().url()).pathname === '/api/auth/refresh'
+        ? route.fulfill({ status: 503, json: { error: 'unavailable' } })
+        : route.fulfill({ status: 401, json: { error: 'unauthorized' } }),
+    );
+    await page.getByRole('button', { name: 'Project options' }).click();
+    await page.getByRole('menuitem', { name: 'Rename project' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Rename project' });
+    await dialog.getByLabel('Name').fill('Midnight Drive (Club Mix)');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+
+    await expect(dialog.getByRole('alert')).toBeVisible();
+    await expect(page).toHaveURL(`${WEB_ORIGIN}/app/projects/${project.id}`);
+  });
 });

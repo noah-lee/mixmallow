@@ -9,7 +9,7 @@ export const api = axios.create({
 let refreshPromise: Promise<void> | null = null
 let onSessionExpired: (() => void) | null = null
 
-// Called when a request got a 401 and the refresh after it failed too.
+// Called when a request got a 401 and the refresh after it got a 401 too.
 export function setSessionExpiredHandler(handler: () => void) {
   onSessionExpired = handler
 }
@@ -44,8 +44,9 @@ api.interceptors.response.use(
     original._retry = true
     try {
       await refresh()
-    } catch {
-      onSessionExpired?.()
+    } catch (refreshError) {
+      // A network error or 5xx says nothing about the session; keep the user signed in.
+      if (httpStatus(refreshError) === 401) onSessionExpired?.()
       return Promise.reject(error)
     }
     return api(original)
