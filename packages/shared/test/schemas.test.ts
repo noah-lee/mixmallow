@@ -8,7 +8,9 @@ import {
   meResponseSchema,
   NAME_MAX,
   nameFromFileName,
+  RETURN_PATH_MAX,
   renameBodySchema,
+  returnPathSchema,
   updateNoteBodySchema,
 } from '../src/schemas.ts';
 
@@ -140,5 +142,31 @@ describe('note bodies', () => {
   it('requires at least one field on update', () => {
     expect(updateNoteBodySchema.safeParse({}).success).toBe(false);
     expect(updateNoteBodySchema.safeParse({ done: false }).success).toBe(true);
+  });
+});
+
+describe('returnPathSchema', () => {
+  it.each([
+    ['/app'],
+    ['/app/projects/abc?x=1'],
+    [`/${'a'.repeat(RETURN_PATH_MAX - 1)}`],
+  ])('accepts %s', (path) => {
+    expect(returnPathSchema.safeParse(path).success).toBe(true);
+  });
+
+  it.each([
+    ['an empty string', ''],
+    ['a relative path', 'app'],
+    ['a protocol-relative url', '//evil.com'],
+    ['a backslash after the slash', '/\\evil.com'],
+    ['an absolute url', 'https://evil.com'],
+    ['the api root', '/api'],
+    ['an api path', '/api/auth/me'],
+    ['a path over the limit', `/${'a'.repeat(RETURN_PATH_MAX)}`],
+    ['a null byte', '/app\u0000'],
+    ['a newline', '/app\n'],
+    ['a delete character', '/app\u007f'],
+  ])('rejects %s', (_label, path) => {
+    expect(returnPathSchema.safeParse(path).success).toBe(false);
   });
 });

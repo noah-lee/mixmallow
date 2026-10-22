@@ -15,6 +15,30 @@ export const meResponseSchema = z.object({
 
 export type MeResponse = z.infer<typeof meResponseSchema>;
 
+export const RETURN_PATH_MAX = 2048;
+
+const hasControlChar = (value: string) =>
+  [...value].some((char) => {
+    const code = char.charCodeAt(0);
+    return code <= 0x1f || code === 0x7f;
+  });
+
+// Where to land after sign-in. Browsers treat `//host` and `/\host` as other origins, and
+// every `/api` prefix (even `/apiary`) is refused so a return path can never hit the api.
+export const returnPathSchema = z
+  .string()
+  .max(RETURN_PATH_MAX)
+  .refine(
+    (path) =>
+      path.startsWith('/') &&
+      path[1] !== '/' &&
+      path[1] !== '\\' &&
+      !path.startsWith('/api') &&
+      !hasControlChar(path),
+  );
+
+export type ReturnPath = z.infer<typeof returnPathSchema>;
+
 export const MB = 1_048_576;
 export const MAX_FILE_BYTES = 100 * MB;
 export const STORAGE_LIMIT_BYTES = 100 * MB;
