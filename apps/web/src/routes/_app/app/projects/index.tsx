@@ -26,8 +26,10 @@ function ProjectsPage() {
   }
   if (!projects.data) return <ProjectsSkeleton />
 
-  const { items } = projects.data
-  if (items.length === 0) return <Navigate to="/app/start" replace />
+  const { items, shared } = projects.data
+  if (items.length === 0 && shared.length === 0) {
+    return <Navigate to="/app/start" replace />
+  }
 
   return (
     <div className="flex flex-col gap-6">

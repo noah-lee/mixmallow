@@ -1,6 +1,11 @@
+import { randomBytes } from 'node:crypto';
 import { closeSync, ftruncateSync, openSync } from 'node:fs';
 import type { Page, Route } from '@playwright/test';
 import { createTestApp } from '../../apps/api/test/helpers/app.ts';
+import {
+  createProject,
+  createUser,
+} from '../../apps/api/test/helpers/factories.ts';
 import { wav } from '../support/audio.ts';
 import { E2E_USER, STORAGE_ORIGIN, WEB_ORIGIN } from '../support/env.ts';
 import { captureScreenshot, expect, test } from '../support/fixtures.ts';
@@ -105,6 +110,32 @@ test('entry route sends a user without a project to onboarding', async ({
 }) => {
   await page.goto('/app');
   await expect(page).toHaveURL(`${WEB_ORIGIN}/app/start`);
+});
+
+test('entry route sends a user with only shared projects to the projects list', async ({
+  page,
+}) => {
+  const id = crypto.randomUUID();
+  const owner = await createUser(app.db, {
+    name: 'Maya Lopez',
+    email: `maya-${id}@example.com`,
+    authProviderId: `e2e-${id}`,
+  });
+  const token = randomBytes(32).toString('base64url');
+  await createProject(app.db, {
+    userId: owner.id,
+    name: 'Midnight Drive',
+    inviteToken: token,
+  });
+  const joined = await page.request.post(`/api/invites/${token}/join`);
+  expect(joined.ok()).toBe(true);
+
+  await page.goto('/app');
+  await expect(page).toHaveURL(`${WEB_ORIGIN}/app/projects`);
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Projects' }),
+  ).toBeVisible();
+  await captureScreenshot(page, 'app-entry-shared-only');
 });
 
 test('empty', async ({ page }) => {

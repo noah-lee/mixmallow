@@ -10,12 +10,19 @@ import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { projectsQueryOptions } from "@/features/projects/api"
 
-// The signed-in entry: the newest version of the user's project, or onboarding.
+// The signed-in entry: the newest version of the user's own project, the projects
+// list when they only collaborate, or onboarding.
 export const Route = createFileRoute("/_app/app/")({
   loader: async ({ context }) => {
-    const { items } = await context.queryClient.fetchQuery(projectsQueryOptions)
+    const { items, shared } =
+      await context.queryClient.fetchQuery(projectsQueryOptions)
     const project = items[0]
-    if (!project) throw redirect({ to: "/app/start", replace: true })
+    if (!project) {
+      throw redirect({
+        to: shared.length > 0 ? "/app/projects" : "/app/start",
+        replace: true,
+      })
+    }
     if (project.latestTrack) {
       throw redirect({
         to: "/app/projects/$projectId/tracks/$trackId",
