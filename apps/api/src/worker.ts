@@ -14,11 +14,9 @@ const worker = startWorker({
   log,
   transcode: ffmpegTranscode,
 });
-await worker.ready;
-log.info('transcode worker listening');
-
 // `docker stop` / redeploys send SIGTERM: hand the job in flight back to the queue
-// rather than leaving it for the lease to expire.
+// rather than leaving it for the lease to expire. Registered before `ready` so a stop
+// during startup is handled too.
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, async () => {
     log.info({ signal }, 'shutting down');
@@ -27,3 +25,6 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.exit(0);
   });
 }
+
+await worker.ready;
+log.info('transcode worker listening');

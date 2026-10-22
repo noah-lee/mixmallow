@@ -26,7 +26,8 @@ export function needsPreview(format: string): boolean {
 
 export const TRANSCODE_CHANNEL = 'transcode_jobs';
 export const MAX_ATTEMPTS = 3;
-// Longer than the ffmpeg timeout plus both transfers, so a live worker never loses its job.
+// Longer than the probe and ffmpeg timeouts plus both transfers, so a live worker keeps its
+// job; there is no renewal.
 export const LEASE_MS = 10 * 60 * 1000;
 // Delay before the 2nd and 3rd attempts.
 export const RETRY_DELAYS_MS = [60 * 1000, 5 * 60 * 1000] as const;
@@ -58,8 +59,8 @@ export type ClaimedJob = {
   format: string;
 };
 
-// A queued job whose delay has passed, or a running one whose worker stopped renewing it
-// (crashed). Skips rows another worker holds, so each job goes to one worker.
+// A queued job whose delay has passed, or a running one whose lease ran out (its worker
+// crashed). Skips rows another worker holds, so each job goes to one worker.
 export async function claimJob(
   db: Database,
   log: FastifyBaseLogger,

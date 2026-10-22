@@ -81,10 +81,13 @@ export async function deleteProject(
       .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
       .for('update');
     if (!project) return null;
+    // Locked so a preview the worker is committing either lands before this read or finds
+    // its track gone (and discards the object) instead of being orphaned by the cascade.
     const trackKeys = await tx
       .select({ key: tracks.storageKey, previewKey: tracks.previewKey })
       .from(tracks)
-      .where(eq(tracks.projectId, projectId));
+      .where(eq(tracks.projectId, projectId))
+      .for('update');
     const uploadKeys = await tx
       .select({ key: uploads.storageKey })
       .from(uploads)

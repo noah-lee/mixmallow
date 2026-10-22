@@ -240,12 +240,45 @@ describe('transcode worker', () => {
     try {
       await Promise.all(workers.map((worker) => worker.ready));
       await waitFor(async () => (await jobRow(job.id))?.status === 'done');
-      await new Promise((resolve) => setTimeout(resolve, 300));
     } finally {
+      // Waits for whatever either worker still has in flight.
       await Promise.all(workers.map((worker) => worker.stop()));
     }
+    expect(await runOnce(deps(transcode))).toBe(false);
     expect(inputs).toHaveLength(1);
     expect((await jobRow(job.id))?.attempts).toBe(1);
+  });
+
+  it('hands the job in flight back, attempt refunded, when stopped', async () => {
+    const { track, job } = await queuedWav();
+    let started = () => {};
+    const running = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const transcode: Transcode = (_input, _output, signal) =>
+      new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), {
+          once: true,
+        });
+        started();
+      });
+    const worker = startWorker(deps(transcode), { pollMs: HOUR_MS });
+    await running;
+    expect(await jobRow(job.id)).toMatchObject({
+      status: 'running',
+      attempts: 1,
+    });
+
+    await worker.stop();
+
+    expect(await jobRow(job.id)).toMatchObject({
+      status: 'queued',
+      attempts: 0,
+      leaseExpiresAt: null,
+    });
+    expect((await trackRow(track.id))?.previewKey).toBeNull();
+    expect(await runOnce(deps(fakeTranscoder().transcode))).toBe(true);
+    expect(await jobRow(job.id)).toMatchObject({ status: 'done', attempts: 1 });
   });
 
   it('discards the preview of a track deleted while it was transcoding', async () => {

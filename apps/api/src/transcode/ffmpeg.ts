@@ -5,6 +5,8 @@ import { z } from 'zod';
 export const PREVIEW_EXTENSION = 'm4a';
 export const PREVIEW_CONTENT_TYPE = 'audio/mp4';
 export const FFMPEG_TIMEOUT_MS = 5 * 60 * 1000;
+// Reading one stream header; a probe that runs longer is stuck.
+export const PROBE_TIMEOUT_MS = 30 * 1000;
 
 // Turns the original at `input` into the preview at `output`. Injected so tests can run
 // without the ffmpeg binary.
@@ -70,11 +72,7 @@ export function previewArgs(
 const run = promisify(execFile);
 
 export const ffmpegTranscode: Transcode = async (input, output, signal) => {
-  const options = {
-    signal,
-    timeout: FFMPEG_TIMEOUT_MS,
-    killSignal: 'SIGKILL' as const,
-  };
+  const options = { signal, killSignal: 'SIGKILL' as const };
   const probe = await run(
     'ffprobe',
     [
@@ -88,8 +86,11 @@ export const ffmpegTranscode: Transcode = async (input, output, signal) => {
       'json',
       input,
     ],
-    options,
+    { ...options, timeout: PROBE_TIMEOUT_MS },
   );
   const stream = parseProbe(JSON.parse(probe.stdout));
-  await run('ffmpeg', previewArgs(input, output, stream), options);
+  await run('ffmpeg', previewArgs(input, output, stream), {
+    ...options,
+    timeout: FFMPEG_TIMEOUT_MS,
+  });
 };
