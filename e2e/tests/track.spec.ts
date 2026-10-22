@@ -1,5 +1,6 @@
 import type { BrowserContext, Page, Route } from '@playwright/test';
-import { notes as notesTable } from '@repo/db';
+import { notes as notesTable, tracks } from '@repo/db';
+import { eq } from 'drizzle-orm';
 import { createTestApp } from '../../apps/api/test/helpers/app.ts';
 import {
   createNote,
@@ -243,7 +244,10 @@ test('playing', async ({ page, context }) => {
     'data-active',
     'true',
   );
-  await captureScreenshot(page, 'track-playing', { waitForIdle: false });
+  await captureScreenshot(page, 'track-playing', {
+    fullPage: false,
+    waitForIdle: false,
+  });
 });
 
 test('clicking at 75% of the waveform seeks to 75% of the track', async ({
@@ -610,7 +614,9 @@ test.describe('the audio fails', () => {
     await waitForAudio(page);
     // The preview becomes ready while the page is open.
     await app.db
-      .$client`update tracks set preview_key = ${previewKey} where id = ${track.id}`;
+      .update(tracks)
+      .set({ previewKey })
+      .where(eq(tracks.id, track.id));
 
     await playButton(page).click();
     await expect(pauseButton(page)).toBeVisible();
@@ -623,6 +629,7 @@ test.describe('the audio fails', () => {
     await expect(pauseButton(page)).toBeVisible();
     await expect(page.getByRole('alert')).toHaveCount(0);
     await captureScreenshot(page, 'track-preview-resumed', {
+      fullPage: false,
       waitForIdle: false,
     });
   });

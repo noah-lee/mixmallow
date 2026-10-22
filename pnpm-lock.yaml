@@ -334,6 +334,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.12.3
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 0.45.4(postgres@3.4.9)
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
