@@ -24,6 +24,7 @@ describe('migrations', () => {
       'notes',
       'projects',
       'tracks',
+      'transcode_jobs',
       'uploads',
       'users',
     ]);

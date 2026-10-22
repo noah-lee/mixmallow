@@ -15,6 +15,13 @@
       "when": 1792451037000,
       "tag": "0001_projects_tracks_notes",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792644259341,
+      "tag": "0002_audio_previews",
+      "breakpoints": true
     }
   ]
 }

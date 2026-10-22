@@ -1,5 +1,7 @@
+import { sql } from 'drizzle-orm';
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -90,12 +92,16 @@ export const tracks = pgTable(
     durationMs: integer('duration_ms').notNull(),
     peaks: jsonb('peaks').$type<number[]>().notNull(),
     storageKey: text('storage_key').notNull(),
+    // A compressed copy for playback; null until the transcode job finishes. Size, format,
+    // duration and peaks keep describing the original.
+    previewKey: text('preview_key'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [
     unique('tracks_project_version_unique').on(t.projectId, t.version),
     unique('tracks_storage_key_unique').on(t.storageKey),
+    unique('tracks_preview_key_unique').on(t.previewKey),
     index('tracks_user_id_idx').on(t.userId),
   ],
 );
@@ -152,8 +158,47 @@ export const uploads = pgTable(
   ],
 );
 
+export type TranscodeJobStatus = 'queued' | 'running' | 'done' | 'failed';
+
+// At most one per track. No user_id and no endpoints: only upload completion, the worker
+// and the backfill touch it, and the owner comes from the track.
+export const transcodeJobs = pgTable(
+  'transcode_jobs',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    trackId: uuid('track_id')
+      .notNull()
+      .references(() => tracks.id, { onDelete: 'cascade' }),
+    status: text('status')
+      .$type<TranscodeJobStatus>()
+      .notNull()
+      .default('queued'),
+    // Bumped at each claim; completion and failure only apply to the attempt they claimed.
+    attempts: integer('attempts').notNull().default(0),
+    runAfter: timestamp('run_after', { withTimezone: true, precision: 3 })
+      .defaultNow()
+      .notNull(),
+    leaseExpiresAt: timestamp('lease_expires_at', {
+      withTimezone: true,
+      precision: 3,
+    }),
+    lastError: text('last_error'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    unique('transcode_jobs_track_id_unique').on(t.trackId),
+    check(
+      'transcode_jobs_status_check',
+      sql`${t.status} in ('queued', 'running', 'done', 'failed')`,
+    ),
+    index('transcode_jobs_claim_idx').on(t.status, t.runAfter),
+  ],
+);
+
 export type SelectUser = typeof users.$inferSelect;
 export type SelectProject = typeof projects.$inferSelect;
 export type SelectTrack = typeof tracks.$inferSelect;
 export type SelectNote = typeof notes.$inferSelect;
 export type SelectUpload = typeof uploads.$inferSelect;
+export type SelectTranscodeJob = typeof transcodeJobs.$inferSelect;

@@ -5,10 +5,12 @@ import {
   type SelectNote,
   type SelectProject,
   type SelectTrack,
+  type SelectTranscodeJob,
   type SelectUpload,
   type SelectUser,
   type Transaction,
   tracks,
+  transcodeJobs,
   uploads,
   users,
 } from '@repo/db';
@@ -118,4 +120,14 @@ export async function createUpload(
     .returning();
   if (!upload) throw new Error('createUpload: insert returned no row');
   return upload;
+}
+
+export async function createTranscodeJob(
+  db: Database | Transaction,
+  overrides: Pick<typeof transcodeJobs.$inferInsert, 'trackId'> &
+    Partial<typeof transcodeJobs.$inferInsert>,
+): Promise<SelectTranscodeJob> {
+  const [job] = await db.insert(transcodeJobs).values(overrides).returning();
+  if (!job) throw new Error('createTranscodeJob: insert returned no row');
+  return job;
 }

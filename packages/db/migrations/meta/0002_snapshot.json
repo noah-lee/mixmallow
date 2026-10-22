@@ -1,0 +1,685 @@
+{
+  "id": "12f5644d-f864-4c73-b49a-2627f724875f",
+  "prevId": "bd5cba97-a22a-4b86-b7a2-9a48630460f0",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.notes": {
+      "name": "notes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "track_id": {
+          "name": "track_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "timestamp_ms": {
+          "name": "timestamp_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "done": {
+          "name": "done",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "notes_track_order_idx": {
+          "name": "notes_track_order_idx",
+          "columns": [
+            {
+              "expression": "track_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "timestamp_ms",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "notes_user_id_idx": {
+          "name": "notes_user_id_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "notes_user_id_users_id_fk": {
+          "name": "notes_user_id_users_id_fk",
+          "tableFrom": "notes",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "notes_track_id_tracks_id_fk": {
+          "name": "notes_track_id_tracks_id_fk",
+          "tableFrom": "notes",
+          "tableTo": "tracks",
+          "columnsFrom": ["track_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.projects": {
+      "name": "projects",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "next_version": {
+          "name": "next_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "projects_user_id_idx": {
+          "name": "projects_user_id_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "projects_user_id_users_id_fk": {
+          "name": "projects_user_id_users_id_fk",
+          "tableFrom": "projects",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.tracks": {
+      "name": "tracks",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "file_name": {
+          "name": "file_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "format": {
+          "name": "format",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content_type": {
+          "name": "content_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "size_bytes": {
+          "name": "size_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "duration_ms": {
+          "name": "duration_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "peaks": {
+          "name": "peaks",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "storage_key": {
+          "name": "storage_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "preview_key": {
+          "name": "preview_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "tracks_user_id_idx": {
+          "name": "tracks_user_id_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "tracks_user_id_users_id_fk": {
+          "name": "tracks_user_id_users_id_fk",
+          "tableFrom": "tracks",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "tracks_project_id_projects_id_fk": {
+          "name": "tracks_project_id_projects_id_fk",
+          "tableFrom": "tracks",
+          "tableTo": "projects",
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "tracks_project_version_unique": {
+          "name": "tracks_project_version_unique",
+          "nullsNotDistinct": false,
+          "columns": ["project_id", "version"]
+        },
+        "tracks_storage_key_unique": {
+          "name": "tracks_storage_key_unique",
+          "nullsNotDistinct": false,
+          "columns": ["storage_key"]
+        },
+        "tracks_preview_key_unique": {
+          "name": "tracks_preview_key_unique",
+          "nullsNotDistinct": false,
+          "columns": ["preview_key"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.transcode_jobs": {
+      "name": "transcode_jobs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "track_id": {
+          "name": "track_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'queued'"
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "run_after": {
+          "name": "run_after",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "lease_expires_at": {
+          "name": "lease_expires_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "transcode_jobs_claim_idx": {
+          "name": "transcode_jobs_claim_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "run_after",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "transcode_jobs_track_id_tracks_id_fk": {
+          "name": "transcode_jobs_track_id_tracks_id_fk",
+          "tableFrom": "transcode_jobs",
+          "tableTo": "tracks",
+          "columnsFrom": ["track_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "transcode_jobs_track_id_unique": {
+          "name": "transcode_jobs_track_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["track_id"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "transcode_jobs_status_check": {
+          "name": "transcode_jobs_status_check",
+          "value": "\"transcode_jobs\".\"status\" in ('queued', 'running', 'done', 'failed')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.uploads": {
+      "name": "uploads",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "file_name": {
+          "name": "file_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "format": {
+          "name": "format",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content_type": {
+          "name": "content_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "size_bytes": {
+          "name": "size_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "storage_key": {
+          "name": "storage_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "uploads_user_id_users_id_fk": {
+          "name": "uploads_user_id_users_id_fk",
+          "tableFrom": "uploads",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "uploads_project_id_projects_id_fk": {
+          "name": "uploads_project_id_projects_id_fk",
+          "tableFrom": "uploads",
+          "tableTo": "projects",
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "uploads_user_id_unique": {
+          "name": "uploads_user_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["user_id"]
+        },
+        "uploads_storage_key_unique": {
+          "name": "uploads_storage_key_unique",
+          "nullsNotDistinct": false,
+          "columns": ["storage_key"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.users": {
+      "name": "users",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "auth_provider": {
+          "name": "auth_provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "auth_provider_id": {
+          "name": "auth_provider_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "picture": {
+          "name": "picture",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "users_email_unique": {
+          "name": "users_email_unique",
+          "nullsNotDistinct": false,
+          "columns": ["email"]
+        },
+        "users_auth_provider_account_unique": {
+          "name": "users_auth_provider_account_unique",
+          "nullsNotDistinct": false,
+          "columns": ["auth_provider", "auth_provider_id"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
