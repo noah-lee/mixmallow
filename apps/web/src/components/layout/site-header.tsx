@@ -28,7 +28,7 @@ export function SiteHeader() {
             <>
               <Link
                 to="/app/projects"
-                className={`flex min-h-11 items-center px-3 text-sm font-semibold hover:bg-hover data-[status=active]:bg-primary-tint data-[status=active]:text-primary-text ${focusRing}`}
+                className={`flex min-h-11 items-center px-3 text-sm font-semibold hover:bg-hover data-[status=active]:text-primary-text data-[status=active]:underline data-[status=active]:decoration-2 data-[status=active]:underline-offset-4 ${focusRing}`}
               >
                 Projects
               </Link>
