@@ -17,6 +17,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { ownsProject } from '../projects/queries.ts';
 import { storageKey } from '../storage/driver.ts';
 import { findTrackDetail } from '../tracks/queries.ts';
+import { enqueueTranscode, needsPreview } from '../transcode/queue.ts';
 import { usageFor } from '../usage/queries.ts';
 
 const notFound = { error: 'not_found' } as const;
@@ -202,6 +203,9 @@ export const uploadRoutes: FastifyPluginAsyncZod = async (app) => {
           })
           .returning({ id: tracks.id });
         if (!track) throw new Error('track insert returned no row');
+        if (needsPreview(upload.format)) {
+          await enqueueTranscode(tx, track.id);
+        }
         await tx
           .delete(uploads)
           .where(and(eq(uploads.id, upload.id), eq(uploads.userId, userId)));

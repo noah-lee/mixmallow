@@ -1,5 +1,6 @@
-import { projects, tracks, uploads } from '@repo/db';
+import { projects, tracks, transcodeJobs, uploads } from '@repo/db';
 import {
+  completeUploadResponseSchema,
   createUploadResponseSchema,
   MAX_FILE_BYTES,
   MB,
@@ -14,6 +15,7 @@ import {
   createTrack,
   createUpload,
 } from './helpers/factories.ts';
+import { keyFromUrl } from './helpers/memory-storage.ts';
 import { createTestSession, type TestSession } from './helpers/session.ts';
 import {
   completeUpload,
@@ -36,6 +38,7 @@ const uploadRows = (userId: string) =>
   app.db.select().from(uploads).where(eq(uploads.userId, userId));
 const trackRows = (userId: string) =>
   app.db.select().from(tracks).where(eq(tracks.userId, userId));
+const jobRows = () => app.db.select().from(transcodeJobs);
 
 function register(session: TestSession, payload: Record<string, unknown>) {
   return app.inject({
@@ -330,6 +333,86 @@ describe('POST /api/uploads/:uploadId/complete', () => {
     expect(res.statusCode).toBe(404);
     expect(await uploadRows(owner.user.id)).toHaveLength(1);
     expect(await trackRows(session.user.id)).toEqual([]);
+  });
+
+  it('queues one transcode job for a completed WAV and answers as before', async () => {
+    const session = await createTestSession(app);
+    const upload = await registered(session);
+    putUpload(app, upload, audio);
+    const res = await completeUpload(app, session, upload.uploadId);
+    expect(res.statusCode).toBe(201);
+    const body = completeUploadResponseSchema.parse(res.json());
+    expect(res.json()).toEqual(body);
+
+    const jobs = await jobRows();
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]).toMatchObject({
+      trackId: body.track.id,
+      status: 'queued',
+      attempts: 0,
+    });
+  });
+
+  it('queues a transcode job for a completed FLAC', async () => {
+    const session = await createTestSession(app);
+    const { track } = await uploadTrack(app, session, { fileName: 'Mix.flac' });
+    const jobs = await jobRows();
+    expect(jobs.map((job) => job.trackId)).toEqual([track.id]);
+  });
+
+  it('queues no transcode job for MP3, AAC or M4A', async () => {
+    const session = await createTestSession(app);
+    const { projectId } = await uploadTrack(app, session, {
+      fileName: 'Mix.mp3',
+    });
+    await uploadTrack(app, session, { fileName: 'Mix.aac', projectId });
+    await uploadTrack(app, session, { fileName: 'Mix.m4a', projectId });
+    expect(await trackRows(session.user.id)).toHaveLength(3);
+    expect(await jobRows()).toEqual([]);
+  });
+
+  it('queues no transcode job when completing fails', async () => {
+    const session = await createTestSession(app);
+    const incomplete = await registered(session);
+    expect(
+      (await completeUpload(app, session, incomplete.uploadId)).json(),
+    ).toEqual({ error: 'upload_incomplete' });
+
+    const mismatched = await registered(session);
+    writeStoredObject(app, keyFromUrl(mismatched.uploadUrl), audio.length + 5);
+    expect(
+      (await completeUpload(app, session, mismatched.uploadId)).json(),
+    ).toEqual({ error: 'upload_size_mismatch' });
+
+    const project = await storedTrack(
+      session,
+      STORAGE_LIMIT_BYTES - audio.length,
+    );
+    const overLimit = await registered(session, project.id);
+    putUpload(app, overLimit, audio);
+    await createTrack(app.db, {
+      userId: session.user.id,
+      projectId: project.id,
+      sizeBytes: 1,
+    });
+    expect(
+      (await completeUpload(app, session, overLimit.uploadId)).json(),
+    ).toEqual({ error: 'storage_limit_reached' });
+
+    expect(await jobRows()).toEqual([]);
+  });
+
+  it('queues one transcode job when the same upload is completed twice at once', async () => {
+    const session = await createTestSession(app);
+    const upload = await registered(session);
+    putUpload(app, upload, audio);
+    await Promise.all([
+      completeUpload(app, session, upload.uploadId),
+      completeUpload(app, session, upload.uploadId),
+    ]);
+    const [track] = await trackRows(session.user.id);
+    const jobs = await jobRows();
+    expect(jobs.map((job) => job.trackId)).toEqual([track?.id]);
   });
 });
 
