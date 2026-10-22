@@ -52,10 +52,15 @@ export function stubGoogleTokenEndpoint(
 }
 
 // Runs /start and returns what the browser would carry back to /callback.
-export async function startSignIn(app: FastifyInstance, provider = 'google') {
+export async function startSignIn(
+  app: FastifyInstance,
+  provider = 'google',
+  next?: string,
+) {
   const res = await app.inject({
     method: 'GET',
     url: `/api/auth/${provider}/start`,
+    ...(next !== undefined && { query: { next } }),
   });
   const location = new URL(res.headers.location ?? '');
   const cookie = (name: string) =>
@@ -68,6 +73,7 @@ export async function startSignIn(app: FastifyInstance, provider = 'google') {
     cookies: {
       oauth_state: cookie('oauth_state'),
       oauth_pkce: cookie('oauth_pkce'),
+      oauth_next: cookie('oauth_next'),
     },
   };
 }

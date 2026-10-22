@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp } from './helpers/app.ts';
 import { TEST_ENV } from './helpers/config.ts';
-import { responseCookie } from './helpers/cookies.ts';
+import { isCleared, responseCookie } from './helpers/cookies.ts';
 import { createUser } from './helpers/factories.ts';
 import { startSignIn, stubGoogleTokenEndpoint } from './helpers/oauth.ts';
 
@@ -57,6 +57,32 @@ describe('GET /api/auth/google/start', () => {
     expect(stateCookie?.value).toContain(state);
     expect(stateCookie?.value).not.toBe(state);
   });
+
+  it('keeps a valid next in a short-lived httpOnly cookie', async () => {
+    const { res } = await startSignIn(app, 'google', '/app/projects/abc?x=1');
+    const next = responseCookie(res, 'oauth_next');
+    expect(next?.value).toBe('/app/projects/abc?x=1');
+    expect(next?.httpOnly).toBe(true);
+    expect(next?.path).toBe('/api/auth/google');
+    expect(next?.maxAge).toBe(600);
+  });
+
+  it.each([
+    ['no next', undefined],
+    ['a protocol-relative next', '//evil.com'],
+    ['an absolute next', 'https://evil.com'],
+    ['an api next', '/api/auth/me'],
+  ])('clears any old next cookie when given %s', async (_label, next) => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/auth/google/start',
+      ...(next !== undefined && { query: { next } }),
+      cookies: { oauth_next: '/app/projects/old' },
+    });
+    expect(res.statusCode).toBe(302);
+    expect(isCleared(res, 'oauth_next')).toBe(true);
+    expect(responseCookie(res, 'oauth_next')?.path).toBe('/api/auth/google');
+  });
 });
 
 describe('GET /api/auth/google/callback', () => {
@@ -73,7 +99,7 @@ describe('GET /api/auth/google/callback', () => {
     const res = await callback(`code=the-code&state=${state}`, cookies);
 
     expect(res.statusCode).toBe(302);
-    expect(res.headers.location).toBe(TEST_ENV.APP_ORIGIN);
+    expect(res.headers.location).toBe(`${TEST_ENV.APP_ORIGIN}/app`);
     expect(responseCookie(res, 'access_token')?.value).toBeTruthy();
     expect(responseCookie(res, 'refresh_token')?.value).toBeTruthy();
 
@@ -181,5 +207,90 @@ describe('GET /api/auth/google/callback', () => {
     expect(res.headers.location).toBe(
       `${TEST_ENV.APP_ORIGIN}/?error=email_in_use`,
     );
+  });
+
+  describe('with a return path', () => {
+    const NEXT = '/app/projects/abc';
+    const withNext = (search: string) =>
+      `${TEST_ENV.APP_ORIGIN}/?${search}&next=${encodeURIComponent(NEXT)}`;
+
+    it('redirects to next and clears the cookie', async () => {
+      stubGoogleTokenEndpoint();
+      const { state, cookies } = await startSignIn(
+        app,
+        'google',
+        '/app/projects/abc?x=1',
+      );
+      const res = await callback(`code=c&state=${state}`, cookies);
+      expect(res.headers.location).toBe(
+        `${TEST_ENV.APP_ORIGIN}/app/projects/abc?x=1`,
+      );
+      expect(isCleared(res, 'oauth_next')).toBe(true);
+    });
+
+    it('redirects to /app without next', async () => {
+      stubGoogleTokenEndpoint();
+      const { state, cookies } = await startSignIn(app);
+      const res = await callback(`code=c&state=${state}`, cookies);
+      expect(res.headers.location).toBe(`${TEST_ENV.APP_ORIGIN}/app`);
+    });
+
+    it.each([
+      ['a protocol-relative path', '//evil.com'],
+      ['a backslash path', '/\\evil.com'],
+      ['an absolute url', 'https://evil.com'],
+      ['an api path', '/api/auth/me'],
+      ['an overlong path', `/${'a'.repeat(2048)}`],
+      ['a path with a newline', '/app\nx'],
+    ])('ignores %s and redirects to /app', async (_label, next) => {
+      stubGoogleTokenEndpoint();
+      const { state, cookies } = await startSignIn(app, 'google', next);
+      const res = await callback(`code=c&state=${state}`, cookies);
+      expect(res.headers.location).toBe(`${TEST_ENV.APP_ORIGIN}/app`);
+    });
+
+    it('revalidates a tampered next cookie', async () => {
+      stubGoogleTokenEndpoint();
+      const { state, cookies } = await startSignIn(app);
+      const res = await callback(`code=c&state=${state}`, {
+        ...cookies,
+        oauth_next: '//evil.com',
+      });
+      expect(res.headers.location).toBe(`${TEST_ENV.APP_ORIGIN}/app`);
+    });
+
+    it('keeps next on a state mismatch', async () => {
+      stubGoogleTokenEndpoint();
+      const { cookies } = await startSignIn(app, 'google', NEXT);
+      const res = await callback('code=c&state=attacker-state', cookies);
+      expect(res.headers.location).toBe(withNext('error=oauth'));
+      expectSignedOut(res);
+    });
+
+    it('keeps next when the user cancels at the provider', async () => {
+      const { state, cookies } = await startSignIn(app, 'google', NEXT);
+      const res = await callback(`error=access_denied&state=${state}`, cookies);
+      expect(res.headers.location).toBe(withNext('error=oauth'));
+    });
+
+    it('keeps next on a failed token exchange', async () => {
+      stubGoogleTokenEndpoint({ status: 400 });
+      const { state, cookies } = await startSignIn(app, 'google', NEXT);
+      const res = await callback(`code=c&state=${state}`, cookies);
+      expect(res.headers.location).toBe(withNext('error=oauth'));
+    });
+
+    it('keeps next when the email belongs to another user', async () => {
+      await createUser(app.db, {
+        email: 'ada@example.com',
+        authProviderId: 'original-sub',
+      });
+      stubGoogleTokenEndpoint();
+      const { state, cookies } = await startSignIn(app, 'google', NEXT);
+      const res = await callback(`code=c&state=${state}`, cookies);
+      expect(res.headers.location).toBe(
+        withNext('error=email_in_use&provider=google'),
+      );
+    });
   });
 });

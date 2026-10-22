@@ -1,4 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { returnPathSchema } from '@repo/shared/schemas';
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import {
@@ -11,6 +12,8 @@ import type { OAuthProfile, OAuthProvider } from './provider.ts';
 
 const OAUTH_STATE_COOKIE = 'oauth_state';
 const OAUTH_PKCE_COOKIE = 'oauth_pkce';
+const OAUTH_NEXT_COOKIE = 'oauth_next';
+const DEFAULT_RETURN_PATH = '/app';
 const OAUTH_COOKIE_MAX_AGE_SECONDS = 10 * 60;
 
 const base64url = (buf: Buffer) => buf.toString('base64url');
@@ -54,7 +57,7 @@ export const oauthRoutes: FastifyPluginAsync<{
     maxAge: OAUTH_COOKIE_MAX_AGE_SECONDS,
   };
 
-  app.get('/start', async (_req, reply) => {
+  app.get<{ Querystring: { next?: unknown } }>('/start', async (req, reply) => {
     const state = randomState();
     const { verifier, challenge } = pkce();
 
@@ -63,6 +66,15 @@ export const oauthRoutes: FastifyPluginAsync<{
       signed: true,
     });
     reply.setCookie(OAUTH_PKCE_COOKIE, verifier, oauthCookieOptions);
+
+    // An invalid `next` is ignored rather than refused: the sign-in still works, it just
+    // lands on the default page. Unsigned because the callback revalidates it.
+    const next = returnPathSchema.safeParse(req.query.next);
+    if (next.success) {
+      reply.setCookie(OAUTH_NEXT_COOKIE, next.data, oauthCookieOptions);
+    } else {
+      reply.clearCookie(OAUTH_NEXT_COOKIE, { path: oauthCookiePath });
+    }
 
     const url = new URL(provider.authorizationEndpoint);
     url.searchParams.set('client_id', provider.clientId);
@@ -87,21 +99,32 @@ export const oauthRoutes: FastifyPluginAsync<{
   const failSignIn = (
     reply: FastifyReply,
     reason: string,
+    next: string | undefined,
     search: Record<string, string> = { error: 'oauth' },
   ) => {
     app.log.warn({ provider: provider.id, reason }, 'oauth sign-in failed');
     const url = new URL('/', config.APP_ORIGIN);
-    for (const [key, value] of Object.entries(search)) {
+    for (const [key, value] of Object.entries({
+      ...search,
+      ...(next && { next }),
+    })) {
       url.searchParams.set(key, value);
     }
     return reply.redirect(url.toString());
   };
 
   app.get('/callback', async (req, reply) => {
+    // Read before any check, so a cancelled or failed sign-in still keeps the destination.
+    const storedNext = returnPathSchema.safeParse(
+      req.cookies[OAUTH_NEXT_COOKIE],
+    );
+    const next = storedNext.success ? storedNext.data : undefined;
+    reply.clearCookie(OAUTH_NEXT_COOKIE, { path: oauthCookiePath });
+
     // State and PKCE verification
     const queryResult = callbackQuerySchema.safeParse(req.query);
     if (!queryResult.success) {
-      return failSignIn(reply, 'missing code or state');
+      return failSignIn(reply, 'missing code or state', next);
     }
     const { code, state } = queryResult.data;
 
@@ -111,14 +134,14 @@ export const oauthRoutes: FastifyPluginAsync<{
     reply.clearCookie(OAUTH_PKCE_COOKIE, { path: oauthCookiePath });
 
     if (!signed || !verifier) {
-      return failSignIn(reply, 'missing oauth cookies');
+      return failSignIn(reply, 'missing oauth cookies', next);
     }
     const unsigned = req.unsignCookie(signed);
     if (!unsigned.valid || !unsigned.value) {
-      return failSignIn(reply, 'invalid oauth state');
+      return failSignIn(reply, 'invalid oauth state', next);
     }
     if (!constantTimeEqual(unsigned.value, state)) {
-      return failSignIn(reply, 'oauth state mismatch');
+      return failSignIn(reply, 'oauth state mismatch', next);
     }
 
     let profile: OAuthProfile;
@@ -133,10 +156,10 @@ export const oauthRoutes: FastifyPluginAsync<{
         { err, provider: provider.id },
         'oauth profile fetch failed',
       );
-      return failSignIn(reply, 'profile fetch failed');
+      return failSignIn(reply, 'profile fetch failed', next);
     }
     if (!profile.emailVerified) {
-      return failSignIn(reply, 'email not verified');
+      return failSignIn(reply, 'email not verified', next);
     }
 
     const result = await upsertUserFromSignIn(app.db, {
@@ -147,7 +170,7 @@ export const oauthRoutes: FastifyPluginAsync<{
       picture: profile.picture,
     });
     if ('error' in result) {
-      return failSignIn(reply, 'email belongs to another account', {
+      return failSignIn(reply, 'email belongs to another account', next, {
         error: 'email_in_use',
         ...(result.existingProvider && { provider: result.existingProvider }),
       });
@@ -157,6 +180,13 @@ export const oauthRoutes: FastifyPluginAsync<{
     const refresh = issueRefreshToken(app, result.user);
     setAuthCookies(reply, access, refresh);
 
-    return reply.redirect(config.APP_ORIGIN);
+    // Re-checked as a URL in case a browser-normalised path resolves to another origin.
+    const destination = new URL(next ?? DEFAULT_RETURN_PATH, config.APP_ORIGIN);
+    const appOrigin = new URL(config.APP_ORIGIN).origin;
+    return reply.redirect(
+      destination.origin === appOrigin
+        ? destination.href
+        : new URL(DEFAULT_RETURN_PATH, config.APP_ORIGIN).href,
+    );
   });
 };
