@@ -13,6 +13,7 @@ import {
   createUpload,
 } from './helpers/factories.ts';
 import { createTestSession } from './helpers/session.ts';
+import { registerUpload, writeStoredObject } from './helpers/uploads.ts';
 
 let app: FastifyInstance;
 beforeAll(async () => {
@@ -69,5 +70,31 @@ describe('GET /api/usage', () => {
       projectCount: 1,
       storageUsedBytes: 5 * MB,
     });
+  });
+
+  it('leaves previews out of storage used and the storage limit', async () => {
+    const session = await createTestSession(app);
+    const project = await createProject(app.db, { userId: session.user.id });
+    for (let i = 0; i < 7; i++) {
+      const previewKey = `users/${session.user.id}/${crypto.randomUUID()}.m4a`;
+      const track = await createTrack(app.db, {
+        userId: session.user.id,
+        projectId: project.id,
+        sizeBytes: 10 * MB,
+        previewKey,
+      });
+      writeStoredObject(app, track.storageKey, 10 * MB);
+      writeStoredObject(app, previewKey, 2 * MB);
+    }
+
+    const res = await getUsage(session.cookies);
+    expect(res.json()).toMatchObject({ storageUsedBytes: 70 * MB });
+
+    const upload = await registerUpload(app, session, {
+      bytes: Buffer.alloc(40 * MB),
+      projectId: project.id,
+    });
+    expect(upload.statusCode).toBe(403);
+    expect(upload.json()).toEqual({ error: 'storage_limit_reached' });
   });
 });

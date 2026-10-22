@@ -66,8 +66,9 @@ export async function ownsProject(
   return row !== undefined;
 }
 
-// Deletes the project (tracks, notes and its pending upload cascade) and returns the
-// storage keys it held, for the caller to delete after commit. null when not found.
+// Deletes the project (tracks, notes, transcode jobs and its pending upload cascade) and
+// returns the storage keys it held, originals and previews, for the caller to delete after
+// commit. null when not found.
 export async function deleteProject(
   db: Database,
   userId: string,
@@ -81,7 +82,7 @@ export async function deleteProject(
       .for('update');
     if (!project) return null;
     const trackKeys = await tx
-      .select({ key: tracks.storageKey })
+      .select({ key: tracks.storageKey, previewKey: tracks.previewKey })
       .from(tracks)
       .where(eq(tracks.projectId, projectId));
     const uploadKeys = await tx
@@ -89,6 +90,11 @@ export async function deleteProject(
       .from(uploads)
       .where(eq(uploads.projectId, projectId));
     await tx.delete(projects).where(eq(projects.id, projectId));
-    return [...trackKeys, ...uploadKeys].map((row) => row.key);
+    return [
+      ...trackKeys.flatMap((row) =>
+        row.previewKey ? [row.key, row.previewKey] : [row.key],
+      ),
+      ...uploadKeys.map((row) => row.key),
+    ];
   });
 }

@@ -1,10 +1,15 @@
-import { notes, tracks } from '@repo/db';
+import { notes, tracks, transcodeJobs } from '@repo/db';
 import { audioUrlResponseSchema, MB, NAME_MAX } from '@repo/shared/schemas';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp } from './helpers/app.ts';
-import { createNote, createProject, createTrack } from './helpers/factories.ts';
+import {
+  createNote,
+  createProject,
+  createTrack,
+  createTranscodeJob,
+} from './helpers/factories.ts';
 import { keyFromUrl } from './helpers/memory-storage.ts';
 import { createTestSession } from './helpers/session.ts';
 import { uploadTrack, writeStoredObject } from './helpers/uploads.ts';
@@ -17,7 +22,11 @@ afterAll(() => app.close());
 
 const MISSING_ID = '00000000-0000-4000-8000-000000000000';
 
-async function sessionWithTrack(overrides: { sizeBytes?: number } = {}) {
+async function sessionWithTrack(
+  overrides: Partial<
+    Omit<typeof tracks.$inferInsert, 'userId' | 'projectId'>
+  > = {},
+) {
   const session = await createTestSession(app);
   const project = await createProject(app.db, { userId: session.user.id });
   const track = await createTrack(app.db, {
@@ -30,6 +39,21 @@ async function sessionWithTrack(overrides: { sizeBytes?: number } = {}) {
 
 const trackRow = async (id: string) =>
   (await app.db.select().from(tracks).where(eq(tracks.id, id)))[0];
+
+// A WAV whose transcode finished; neither object is in the bucket yet.
+async function sessionWithPreviewedTrack(sizeBytes = MB) {
+  const session = await createTestSession(app);
+  const project = await createProject(app.db, { userId: session.user.id });
+  const previewKey = `users/${session.user.id}/${crypto.randomUUID()}.m4a`;
+  const track = await createTrack(app.db, {
+    userId: session.user.id,
+    projectId: project.id,
+    sizeBytes,
+    previewKey,
+  });
+  await createTranscodeJob(app.db, { trackId: track.id, status: 'done' });
+  return { session, project, track: { ...track, previewKey } };
+}
 
 describe('GET /api/tracks/:trackId', () => {
   it('401s without a session', async () => {
@@ -178,6 +202,31 @@ describe('DELETE /api/tracks/:trackId', () => {
     expect(await trackRow(track.id)).toBeDefined();
     expect(await app.storage.headSize(track.storageKey)).toBe(10);
   });
+
+  it('deletes the original, the preview and the job, freeing only the original size', async () => {
+    const { session, track } = await sessionWithPreviewedTrack(5 * MB);
+    writeStoredObject(app, track.storageKey, 5 * MB);
+    writeStoredObject(app, track.previewKey, MB);
+    const usage = () =>
+      app.inject({
+        method: 'GET',
+        url: '/api/usage',
+        cookies: session.cookies,
+      });
+    expect((await usage()).json().storageUsedBytes).toBe(5 * MB);
+
+    const res = await remove(track.id, session.cookies);
+    expect(res.statusCode).toBe(204);
+    expect(await app.storage.headSize(track.storageKey)).toBeNull();
+    expect(await app.storage.headSize(track.previewKey)).toBeNull();
+    expect(
+      await app.db
+        .select()
+        .from(transcodeJobs)
+        .where(eq(transcodeJobs.trackId, track.id)),
+    ).toEqual([]);
+    expect((await usage()).json().storageUsedBytes).toBe(0);
+  });
 });
 
 describe('GET /api/tracks/:trackId/audio', () => {
@@ -214,6 +263,54 @@ describe('GET /api/tracks/:trackId/audio', () => {
 
   it("404s another user's track", async () => {
     const { track } = await sessionWithTrack();
+    const { cookies } = await createTestSession(app);
+    const res = await audioUrl(track.id, cookies);
+    expect(res.statusCode).toBe(404);
+  });
+
+  const audioKey = async (trackId: string, cookies: Record<string, string>) => {
+    const res = await audioUrl(trackId, cookies);
+    expect(res.statusCode).toBe(200);
+    return keyFromUrl(audioUrlResponseSchema.parse(res.json()).url);
+  };
+
+  it('signs the preview once the track has one', async () => {
+    const { session, track } = await sessionWithPreviewedTrack();
+    const key = await audioKey(track.id, session.cookies);
+    expect(key).toBe(track.previewKey);
+    expect(key.endsWith('.m4a')).toBe(true);
+  });
+
+  it('signs the original while the transcode is queued or after it failed', async () => {
+    const queued = await sessionWithTrack();
+    await createTranscodeJob(app.db, { trackId: queued.track.id });
+    expect(await audioKey(queued.track.id, queued.session.cookies)).toBe(
+      queued.track.storageKey,
+    );
+
+    const failed = await sessionWithTrack();
+    await createTranscodeJob(app.db, {
+      trackId: failed.track.id,
+      status: 'failed',
+      attempts: 3,
+      lastError: 'ffmpeg exited with code 1',
+    });
+    expect(await audioKey(failed.track.id, failed.session.cookies)).toBe(
+      failed.track.storageKey,
+    );
+  });
+
+  it('signs the original of an MP3', async () => {
+    const { session, track } = await sessionWithTrack({
+      format: 'mp3',
+      fileName: 'Mix.mp3',
+      contentType: 'audio/mpeg',
+    });
+    expect(await audioKey(track.id, session.cookies)).toBe(track.storageKey);
+  });
+
+  it("404s another user's track that has a preview", async () => {
+    const { track } = await sessionWithPreviewedTrack();
     const { cookies } = await createTestSession(app);
     const res = await audioUrl(track.id, cookies);
     expect(res.statusCode).toBe(404);

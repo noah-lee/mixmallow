@@ -224,6 +224,25 @@ describe('DELETE /api/projects/:projectId', () => {
     expect(list.json()).toEqual({ items: [] });
   });
 
+  it("deletes every track's original and preview objects", async () => {
+    const { session, project } = await sessionWithProject();
+    const previewKey = `users/${session.user.id}/${crypto.randomUUID()}.m4a`;
+    const previewed = await createTrack(app.db, {
+      userId: session.user.id,
+      projectId: project.id,
+      previewKey,
+    });
+    const pending = await addTrack(session, project.id);
+    const keys = [previewed.storageKey, previewKey, pending.storageKey];
+    for (const key of keys) writeStoredObject(app, key, 10);
+
+    const res = await remove(project.id, session.cookies);
+    expect(res.statusCode).toBe(204);
+    for (const key of keys) {
+      expect(await app.storage.headSize(key)).toBeNull();
+    }
+  });
+
   it("404s another user's project and leaves its rows and files", async () => {
     const { project, track } = await populatedProject();
     const { cookies } = await createTestSession(app);

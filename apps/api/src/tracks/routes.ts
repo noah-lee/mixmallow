@@ -6,7 +6,7 @@ import {
   type TrackSummary,
   trackIdParamsSchema,
 } from '@repo/shared/schemas';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import {
   findTrackDetail,
@@ -63,27 +63,32 @@ export const trackRoutes: FastifyPluginAsyncZod = async (app) => {
     },
   );
 
-  // Notes cascade; the stored file goes after the commit.
+  // Notes and the transcode job cascade; the stored files go after the commit.
   app.delete('/:trackId', options, async (req, reply) => {
     const [removed] = await app.db
       .delete(tracks)
       .where(owned(req.user.sub, req.params.trackId))
-      .returning({ key: tracks.storageKey });
+      .returning({ key: tracks.storageKey, previewKey: tracks.previewKey });
     if (!removed) {
       reply.code(404);
       return notFound;
     }
-    await app.storage.deleteMany([removed.key]);
+    await app.storage.deleteMany(
+      removed.previewKey ? [removed.key, removed.previewKey] : [removed.key],
+    );
     return reply.code(204).send();
   });
 
-  // Signed URLs expire, so the player asks again when one stops working.
+  // Signed URLs expire, so the player asks again when one stops working. Plays the
+  // compressed preview once it exists, else the original.
   app.get(
     '/:trackId/audio',
     options,
     async (req, reply): Promise<AudioUrlResponse | typeof notFound> => {
       const [track] = await app.db
-        .select({ key: tracks.storageKey })
+        .select({
+          key: sql<string>`coalesce(${tracks.previewKey}, ${tracks.storageKey})`,
+        })
         .from(tracks)
         .where(owned(req.user.sub, req.params.trackId));
       if (!track) {
