@@ -22,6 +22,7 @@ describe('migrations', () => {
       SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename`;
     expect(tables.map((t) => t.tablename)).toEqual([
       'notes',
+      'project_members',
       'projects',
       'tracks',
       'transcode_jobs',

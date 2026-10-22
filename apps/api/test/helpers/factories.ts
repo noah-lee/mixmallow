@@ -1,9 +1,11 @@
 import {
   type Database,
   notes,
+  projectMembers,
   projects,
   type SelectNote,
   type SelectProject,
+  type SelectProjectMember,
   type SelectTrack,
   type SelectTranscodeJob,
   type SelectUpload,
@@ -53,6 +55,19 @@ export async function createProject(
     .returning();
   if (!project) throw new Error('createProject: insert returned no row');
   return project;
+}
+
+export async function createMember(
+  db: Database | Transaction,
+  overrides: Pick<typeof projectMembers.$inferInsert, 'projectId' | 'userId'> &
+    Partial<typeof projectMembers.$inferInsert>,
+): Promise<SelectProjectMember> {
+  const [member] = await db
+    .insert(projectMembers)
+    .values(overrides)
+    .returning();
+  if (!member) throw new Error('createMember: insert returned no row');
+  return member;
 }
 
 // Takes the version from the project's counter, as upload completion does.

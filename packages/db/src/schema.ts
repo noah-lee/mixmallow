@@ -6,6 +6,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -67,10 +68,37 @@ export const projects = pgTable(
     name: text('name').notNull(),
     // Version numbers are never reused, even after the newest track is deleted.
     nextVersion: integer('next_version').notNull().default(1),
+    // The share link's secret; null while the owner has no link. Generated in the api.
+    inviteToken: text('invite_token'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [index('projects_user_id_idx').on(t.userId)],
+  (t) => [
+    index('projects_user_id_idx').on(t.userId),
+    unique('projects_invite_token_unique').on(t.inviteToken),
+  ],
+);
+
+// Unlike the owned tables, user_id here is the collaborator, not the owner. The owner is
+// never a row (owner = projects.user_id); the collaborator cap is enforced on join.
+export const projectMembers = pgTable(
+  'project_members',
+  {
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    primaryKey({
+      name: 'project_members_pkey',
+      columns: [t.projectId, t.userId],
+    }),
+    index('project_members_user_id_idx').on(t.userId),
+  ],
 );
 
 export const tracks = pgTable(
@@ -198,6 +226,7 @@ export const transcodeJobs = pgTable(
 
 export type SelectUser = typeof users.$inferSelect;
 export type SelectProject = typeof projects.$inferSelect;
+export type SelectProjectMember = typeof projectMembers.$inferSelect;
 export type SelectTrack = typeof tracks.$inferSelect;
 export type SelectNote = typeof notes.$inferSelect;
 export type SelectUpload = typeof uploads.$inferSelect;
