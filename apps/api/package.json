@@ -29,6 +29,7 @@
     "fastify": "catalog:",
     "fastify-plugin": "catalog:",
     "fastify-type-provider-zod": "catalog:",
+    "pino": "catalog:",
     "postgres": "catalog:",
     "zod": "catalog:"
   },
