@@ -1,8 +1,10 @@
 import type { BrowserContext, Page } from '@playwright/test';
 import { createTestApp } from '../../apps/api/test/helpers/app.ts';
 import {
+  createMember,
   createProject,
   createTrack,
+  createUser,
 } from '../../apps/api/test/helpers/factories.ts';
 import { WEB_ORIGIN } from '../support/env.ts';
 import { captureScreenshot, expect, test } from '../support/fixtures.ts';
@@ -10,6 +12,8 @@ import { signedInUser } from '../support/session.ts';
 
 // This year, so the row's date has no year: "Created Oct 3".
 const OCT_3 = new Date(new Date().getFullYear(), 9, 3, 12);
+const OCT_18 = new Date(new Date().getFullYear(), 9, 18, 12);
+const OCT_20 = new Date(new Date().getFullYear(), 9, 20, 12);
 
 let app: Awaited<ReturnType<typeof createTestApp>>;
 
@@ -54,6 +58,33 @@ async function seed(context: BrowserContext, versions = 3) {
   const project = await seedProject(user.id, versions);
   return { user, project };
 }
+
+async function seedShared(
+  memberId: string,
+  {
+    name = 'Glass Hours',
+    owner = 'Jo Park' as string | null,
+    versions = 2,
+    joinedAt = OCT_20,
+  } = {},
+) {
+  const id = crypto.randomUUID();
+  const user = await createUser(app.db, {
+    email: `owner-${id}@example.com`,
+    authProviderId: `e2e-${id}`,
+    name: owner,
+  });
+  const project = await seedProject(user.id, versions, name);
+  await createMember(app.db, {
+    projectId: project.id,
+    userId: memberId,
+    createdAt: joinedAt,
+  });
+  return project;
+}
+
+const section = (page: Page, name: string) =>
+  page.getByRole('region', { name });
 
 const rows = (page: Page) => page.getByRole('main').getByRole('listitem');
 
@@ -131,6 +162,88 @@ test('only the own projects are listed', async ({ page, context }) => {
   await expect(rows(page)).toHaveCount(1);
   await expect(rows(page).first()).toContainText('Midnight Drive');
   await expect(page.getByText('Other Song')).toHaveCount(0);
+});
+
+test('shared with you', async ({ page, context }) => {
+  const { user } = await seed(context);
+  await seedShared(user.id);
+  await openProjects(page);
+
+  const own = section(page, 'Your projects');
+  await expect(own.getByRole('listitem')).toHaveCount(1);
+  await expect(own.getByRole('listitem')).toContainText(
+    'Midnight Drive3 versions · Created Oct 3',
+  );
+  await expect(own.getByText('Free plan: 1 of 1 projects')).toBeVisible();
+
+  const shared = section(page, 'Shared with you');
+  await expect(shared.getByRole('listitem')).toHaveCount(1);
+  await expect(shared.getByRole('listitem')).toContainText(
+    'Glass HoursShared by Jo Park2 versions · Joined Oct 20',
+  );
+  await captureScreenshot(page, 'projects-shared');
+});
+
+test('only shared projects', async ({ page, context }) => {
+  const user = await signIn(context);
+  await seedShared(user.id);
+  await openProjects(page);
+
+  const own = section(page, 'Your projects');
+  await expect(own.getByRole('listitem')).toHaveCount(0);
+  await expect(own).toContainText("You don't have a project yet");
+  await expect(own.getByText('Free plan: 0 of 1 projects')).toBeVisible();
+  await expect(
+    section(page, 'Shared with you').getByRole('listitem'),
+  ).toContainText('Glass Hours');
+  await captureScreenshot(page, 'projects-shared-only');
+
+  await own.getByRole('link', { name: 'Upload a track' }).click();
+  await expect(page).toHaveURL(`${WEB_ORIGIN}/app/start`);
+});
+
+test('no shared projects shows no section titles', async ({
+  page,
+  context,
+}) => {
+  await seed(context);
+  await openProjects(page);
+  await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0);
+  await expect(page.getByText('Shared with you')).toHaveCount(0);
+});
+
+test('shared projects list newest joined first', async ({ page, context }) => {
+  const { user } = await seed(context);
+  await seedShared(user.id, { name: 'Older Join', joinedAt: OCT_18 });
+  await seedShared(user.id, { name: 'Newer Join', joinedAt: OCT_20 });
+  await openProjects(page);
+  const shared = section(page, 'Shared with you').getByRole('listitem');
+  await expect(shared).toHaveCount(2);
+  await expect(shared.nth(0)).toContainText('Newer Join');
+  await expect(shared.nth(1)).toContainText('Older Join');
+});
+
+test('a shared project by an unnamed owner, one version', async ({
+  page,
+  context,
+}) => {
+  const user = await signIn(context);
+  await seedShared(user.id, { owner: null, versions: 1 });
+  await openProjects(page);
+  await expect(
+    section(page, 'Shared with you').getByRole('listitem'),
+  ).toContainText('Shared by Unnamed user1 version · Joined Oct 20');
+});
+
+test('opening a shared project goes to its page', async ({ page, context }) => {
+  const user = await signIn(context);
+  const project = await seedShared(user.id);
+  await openProjects(page);
+  await section(page, 'Shared with you').getByRole('link').click();
+  await expect(page).toHaveURL(`${WEB_ORIGIN}/app/projects/${project.id}`);
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Glass Hours' }),
+  ).toBeVisible();
 });
 
 test.describe('a request fails', () => {
