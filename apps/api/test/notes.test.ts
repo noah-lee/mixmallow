@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp } from './helpers/app.ts';
 import { createNote, createProject, createTrack } from './helpers/factories.ts';
 import { createTestSession, type TestSession } from './helpers/session.ts';
+import { shareProject } from './helpers/sharing.ts';
 
 let app: FastifyInstance;
 beforeAll(async () => {
@@ -179,6 +180,11 @@ describe('POST /api/tracks/:trackId/notes', () => {
       done: false,
       createdAt: expect.any(String),
       updatedAt: expect.any(String),
+      author: {
+        id: session.user.id,
+        name: session.user.name,
+        picture: null,
+      },
     });
   });
 
@@ -349,5 +355,169 @@ describe('DELETE /api/notes/:noteId', () => {
     const res = await remove(note.id, cookies);
     expect(res.statusCode).toBe(404);
     expect(await noteRow(note.id)).toBeDefined();
+  });
+});
+
+describe('notes on a shared project', () => {
+  async function shared() {
+    const s = await shareProject(app);
+    const track = s.tracks[2];
+    if (!track) throw new Error('no track');
+    const mayaNote = await createNote(app.db, {
+      userId: s.owner.user.id,
+      trackId: track.id,
+      timestampMs: 5000,
+      text: "Maya's note",
+    });
+    return { ...s, track, mayaNote };
+  }
+
+  function deleteNote(noteId: string, cookies: Record<string, string>) {
+    return app.inject({
+      method: 'DELETE',
+      url: `/api/notes/${noteId}`,
+      cookies,
+    });
+  }
+
+  it("lets a collaborator add a note that shows up as theirs in the owner's list", async () => {
+    const { owner, collaborator, track } = await shared();
+    const res = await postNote(
+      track.id,
+      { timestampMs: 62_000, text: 'Kick is muddy' },
+      collaborator.cookies,
+    );
+    expect(res.statusCode).toBe(201);
+    expect(res.json().author).toEqual({
+      id: collaborator.user.id,
+      name: 'Sam',
+      picture: 'https://example.com/sam.png',
+    });
+
+    const list = await listNotes(track.id, owner.cookies);
+    const body = noteListResponseSchema.parse(list.json());
+    expect(
+      body.items.map((n) => [n.timestampMs, n.author.id, n.author.name]),
+    ).toEqual([
+      [5000, owner.user.id, 'Maya'],
+      [62_000, collaborator.user.id, 'Sam'],
+    ]);
+  });
+
+  it("gives a collaborator everyone's notes with their authors and no emails", async () => {
+    const { collaborator, track, mayaNote } = await shared();
+    const res = await listNotes(track.id, collaborator.cookies);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().items).toEqual([
+      expect.objectContaining({
+        id: mayaNote.id,
+        author: { id: mayaNote.userId, name: 'Maya', picture: null },
+      }),
+    ]);
+    expect(res.body).not.toContain('@example.com');
+  });
+
+  it('lets a collaborator edit, tick and delete their own note', async () => {
+    const { collaborator, track } = await shared();
+    const note = await ownNote(collaborator, track.id);
+    const edited = await patchNote(
+      note.id,
+      { text: 'Changed', timestampMs: 9000 },
+      collaborator.cookies,
+    );
+    expect(edited.statusCode).toBe(200);
+    expect(edited.json()).toMatchObject({ text: 'Changed', timestampMs: 9000 });
+    const ticked = await patchNote(
+      note.id,
+      { done: true },
+      collaborator.cookies,
+    );
+    expect(ticked.statusCode).toBe(200);
+    expect(ticked.json()).toMatchObject({ done: true });
+    const removed = await deleteNote(note.id, collaborator.cookies);
+    expect(removed.statusCode).toBe(204);
+    expect(await noteRow(note.id)).toBeUndefined();
+  });
+
+  it("forbids a collaborator to change or delete the owner's note", async () => {
+    const { collaborator, mayaNote } = await shared();
+    for (const payload of [{ text: 'Hijacked' }, { done: true }]) {
+      const res = await patchNote(mayaNote.id, payload, collaborator.cookies);
+      expect(res.statusCode).toBe(403);
+      expect(res.json()).toEqual({ error: 'forbidden' });
+    }
+    const res = await deleteNote(mayaNote.id, collaborator.cookies);
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toEqual({ error: 'forbidden' });
+    expect(await noteRow(mayaNote.id)).toMatchObject({
+      text: "Maya's note",
+      done: false,
+    });
+  });
+
+  it("lets the owner tick and delete a collaborator's note but not edit it", async () => {
+    const { owner, collaborator, track } = await shared();
+    const note = await ownNote(collaborator, track.id);
+    for (const payload of [
+      { text: 'Rewritten' },
+      { timestampMs: 1 },
+      { done: true, text: 'Rewritten' },
+    ]) {
+      const res = await patchNote(note.id, payload, owner.cookies);
+      expect(res.statusCode).toBe(403);
+      expect(res.json()).toEqual({ error: 'forbidden' });
+    }
+    expect(await noteRow(note.id)).toMatchObject({
+      text: 'Original',
+      timestampMs: 5000,
+      done: false,
+    });
+
+    const ticked = await patchNote(note.id, { done: true }, owner.cookies);
+    expect(ticked.statusCode).toBe(200);
+    expect(ticked.json()).toMatchObject({
+      done: true,
+      text: 'Original',
+      author: { id: collaborator.user.id },
+    });
+    const removed = await deleteNote(note.id, owner.cookies);
+    expect(removed.statusCode).toBe(204);
+    expect(await noteRow(note.id)).toBeUndefined();
+  });
+
+  it('counts notes from every author toward the per-track limit', async () => {
+    const { owner, collaborator, track } = await shared();
+    await app.db.insert(notes).values(
+      Array.from({ length: NOTE_LIMIT_PER_TRACK - 1 }, (_, i) => ({
+        userId: i % 2 ? owner.user.id : collaborator.user.id,
+        trackId: track.id,
+        timestampMs: i,
+        text: `n${i}`,
+      })),
+    );
+    for (const session of [owner, collaborator]) {
+      const res = await postNote(
+        track.id,
+        { timestampMs: 1, text: 'One more' },
+        session.cookies,
+      );
+      expect(res.statusCode).toBe(403);
+      expect(res.json()).toEqual({ error: 'note_limit_reached' });
+    }
+  });
+
+  it('404s an outsider listing, adding, changing or deleting notes', async () => {
+    const { outsider, track, mayaNote } = await shared();
+    const responses = [
+      await listNotes(track.id, outsider.cookies),
+      await postNote(track.id, { timestampMs: 1, text: 'x' }, outsider.cookies),
+      await patchNote(mayaNote.id, { done: true }, outsider.cookies),
+      await deleteNote(mayaNote.id, outsider.cookies),
+    ];
+    for (const res of responses) {
+      expect(res.statusCode).toBe(404);
+      expect(res.json()).toEqual({ error: 'not_found' });
+    }
+    expect(await noteRow(mayaNote.id)).toMatchObject({ done: false });
   });
 });

@@ -233,6 +233,7 @@ export const noteSchema = z.object({
   done: z.boolean(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
+  author: personSchema,
 });
 
 export type Note = z.infer<typeof noteSchema>;
