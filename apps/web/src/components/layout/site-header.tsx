@@ -13,7 +13,8 @@ export function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background/80 pt-[env(safe-area-inset-top)] backdrop-blur">
-      <div className="mx-auto flex h-15 max-w-280 items-center justify-between gap-2 pr-[max(0.5rem,env(safe-area-inset-right))] pl-[max(1rem,env(safe-area-inset-left))] sm:px-6 lg:px-8">
+      {/* 0.625rem plus the avatar's 6px inset in its 44px hit area matches the 1rem left edge. */}
+      <div className="mx-auto flex h-15 max-w-280 items-center justify-between gap-2 pr-[max(0.625rem,env(safe-area-inset-right))] pl-[max(1rem,env(safe-area-inset-left))] sm:px-6 lg:px-8">
         <Link
           to="/"
           className={`-ml-2 flex items-center gap-2 px-2 py-1 font-heading text-heading-3 font-extrabold ${focusRing}`}
@@ -27,7 +28,7 @@ export function SiteHeader() {
             <>
               <Link
                 to="/app/projects"
-                className={`flex min-h-11 items-center px-3 text-sm font-semibold hover:bg-hover data-[status=active]:text-primary-text ${focusRing}`}
+                className={`flex min-h-11 items-center px-3 text-sm font-semibold hover:bg-hover data-[status=active]:bg-primary-tint data-[status=active]:text-primary-text ${focusRing}`}
               >
                 Projects
               </Link>
