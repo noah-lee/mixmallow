@@ -23,6 +23,13 @@ export function usePlayer(trackId: string, durationMs: number) {
   const [ready, setReady] = useState(false)
   const [waiting, setWaiting] = useState(false)
   const [mediaFailed, setMediaFailed] = useState(false)
+  // Playback interrupted by a URL refresh that picks up again once the new source loads.
+  // It still reads as playing (and buffering) so the button offers Pause, which cancels it.
+  const [resuming, setResumingState] = useState(false)
+  const setResuming = useCallback((value: boolean) => {
+    resumeRef.current = value
+    setResumingState(value)
+  }, [])
 
   const failed = mediaFailed || (audioUrl.isError && !audioUrl.data)
   const src = audioUrl.data?.url
@@ -43,8 +50,10 @@ export function usePlayer(trackId: string, durationMs: number) {
         setReady(true)
         audio.currentTime = positionRef.current / 1000
         if (resumeRef.current) {
-          resumeRef.current = false
-          audio.play().catch(() => {})
+          audio
+            .play()
+            .catch(() => {})
+            .finally(() => setResuming(false))
         }
       },
       play: () => setPlaying(true),
@@ -59,16 +68,16 @@ export function usePlayer(trackId: string, durationMs: number) {
         setWaiting(false)
         // The signed URL may have expired: ask for a fresh one once before giving up.
         if (retriedRef.current) {
-          resumeRef.current = false
+          setResuming(false)
           setMediaFailed(true)
           return
         }
         retriedRef.current = true
         // A fresh link can point at another file (the preview): carry on from the same spot.
-        resumeRef.current = wasPlaying
+        setResuming(wasPlaying)
         const result = await refetchRef.current()
         if (result.isError) {
-          resumeRef.current = false
+          setResuming(false)
           setMediaFailed(true)
         }
       },
@@ -82,7 +91,7 @@ export function usePlayer(trackId: string, durationMs: number) {
       }
       audio.pause()
     }
-  }, [audio])
+  }, [audio, setResuming])
 
   // Every fetch reloads, even when it returns the same URL (local storage).
   const fetchedAt = audioUrl.dataUpdatedAt
@@ -118,27 +127,29 @@ export function usePlayer(trackId: string, durationMs: number) {
 
   const toggle = useCallback(() => {
     if (failed) return
-    if (audio.paused) {
+    if (resumeRef.current) {
+      setResuming(false)
+    } else if (audio.paused) {
       // A rejected play() (source failing, interrupted by a pause) surfaces through the
       // element's own error event.
       audio.play().catch(() => {})
     } else {
       audio.pause()
     }
-  }, [audio, failed])
+  }, [audio, failed, setResuming])
 
   const retry = useCallback(() => {
     retriedRef.current = false
-    resumeRef.current = false
+    setResuming(false)
     setMediaFailed(false)
     void refetchRef.current()
-  }, [])
+  }, [setResuming])
 
   return {
     currentMs,
     durationMs,
-    playing,
-    buffering: !failed && (!ready || waiting),
+    playing: playing || resuming,
+    buffering: !failed && (!ready || waiting || resuming),
     failed,
     seek,
     toggle,
