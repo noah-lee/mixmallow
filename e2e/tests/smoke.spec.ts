@@ -31,6 +31,16 @@ test.describe('signed out', () => {
       page.getByRole('button', { name: 'Continue with Google' }),
     ).toBeVisible();
   });
+
+  test('/app/projects sends a signed-out visitor to the landing page', async ({
+    page,
+  }) => {
+    await page.goto('/app/projects');
+    await expect(page).toHaveURL(`${WEB_ORIGIN}/`);
+    await expect(
+      page.getByRole('button', { name: 'Continue with Google' }),
+    ).toBeVisible();
+  });
 });
 
 test.describe('signed in', () => {
