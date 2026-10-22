@@ -5,15 +5,18 @@ import {
   useMatchRoute,
 } from "@tanstack/react-router"
 import { PageLayout } from "@/components/layout/page-layout"
-import { meQueryOptions } from "@/features/auth/api"
+import { meQueryOptions, returnPathFor } from "@/features/auth/api"
 
 export const Route = createFileRoute("/_app")({
   // Auth guard for every route nested under this layout. Resolves the shared
   // `me` query (cached, so it's usually instant) and bounces unauthenticated
-  // visitors to the public landing page.
-  beforeLoad: async ({ context }) => {
+  // visitors to the public landing page, which signs them in and sends them back.
+  beforeLoad: async ({ context, location }) => {
     const me = await context.queryClient.ensureQueryData(meQueryOptions)
-    if (!me) throw redirect({ to: "/" })
+    if (!me) {
+      const next = returnPathFor(location)
+      throw redirect({ to: "/", search: next ? { next } : {}, replace: true })
+    }
     return { me }
   },
   component: AppLayout,

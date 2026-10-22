@@ -7,6 +7,12 @@ export const api = axios.create({
 })
 
 let refreshPromise: Promise<void> | null = null
+let onSessionExpired: (() => void) | null = null
+
+// Called when a request got a 401 and the refresh after it failed too.
+export function setSessionExpiredHandler(handler: () => void) {
+  onSessionExpired = handler
+}
 
 function refresh(): Promise<void> {
   refreshPromise ??= (async () => {
@@ -39,6 +45,7 @@ api.interceptors.response.use(
     try {
       await refresh()
     } catch {
+      onSessionExpired?.()
       return Promise.reject(error)
     }
     return api(original)

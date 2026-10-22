@@ -1,12 +1,16 @@
-import { type AuthProvider, authProviderSchema } from "@repo/shared/schemas"
-import { createFileRoute, Link } from "@tanstack/react-router"
-import { CircleAlert, Layers, Lock, MapPin } from "lucide-react"
+import {
+  type AuthProvider,
+  authProviderSchema,
+  returnPathSchema,
+} from "@repo/shared/schemas"
+import { createFileRoute, Link, redirect } from "@tanstack/react-router"
+import { CircleAlert, Info, Layers, Lock, MapPin } from "lucide-react"
 import { useEffect, useState } from "react"
 import { z } from "zod"
 import { PageLayout } from "@/components/layout/page-layout"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { authProviderLabels, useMe } from "@/features/auth/api"
+import { authProviderLabels, meQueryOptions, useMe } from "@/features/auth/api"
 import { SignInButton } from "@/features/auth/sign-in-button"
 import { WaveformIllustration } from "@/features/landing/waveform-illustration"
 import { site } from "@/lib/site"
@@ -15,10 +19,20 @@ import { cn } from "@/lib/utils"
 export const Route = createFileRoute("/")({
   // The API's OAuth callback sends failures back here: `?error=oauth`, or
   // `?error=email_in_use&provider=<the provider that email signed up with>`.
+  // `next` is the protected page to return to after signing in (an invalid one is dropped).
   validateSearch: z.object({
     error: z.string().optional(),
     provider: authProviderSchema.optional().catch(undefined),
+    next: returnPathSchema.optional().catch(undefined),
   }),
+  beforeLoad: async ({ context, search: { next } }) => {
+    if (!next) return
+    // A failed `me` (API down) just renders the landing page.
+    const me = await context.queryClient
+      .ensureQueryData(meQueryOptions)
+      .catch(() => null)
+    if (me) throw redirect({ href: next, replace: true })
+  },
   component: Landing,
 })
 
@@ -55,7 +69,7 @@ function signInErrorMessage(error: string, provider?: AuthProvider) {
 
 function Landing() {
   const me = useMe()
-  const { error, provider } = Route.useSearch()
+  const { error, provider, next } = Route.useSearch()
   const navigate = Route.useNavigate()
   const [errorMessage, setErrorMessage] = useState(
     error ? signInErrorMessage(error, provider) : null,
@@ -63,8 +77,8 @@ function Landing() {
 
   // Drop `?error` once read, so a reload or coming back from the provider doesn't show a stale banner.
   useEffect(() => {
-    if (error) navigate({ search: {}, replace: true })
-  }, [error, navigate])
+    if (error) navigate({ search: next ? { next } : {}, replace: true })
+  }, [error, next, navigate])
 
   return (
     <PageLayout className="max-w-280 gap-12 lg:gap-20 lg:pt-16">
@@ -83,6 +97,12 @@ function Landing() {
               <AlertDescription>{errorMessage}</AlertDescription>
             </Alert>
           )}
+          {next && !errorMessage && me.data === null && (
+            <Alert role="status" className="text-left sm:max-w-md">
+              <Info />
+              <AlertDescription>Sign in to continue.</AlertDescription>
+            </Alert>
+          )}
 
           <div className="flex flex-col gap-3 pt-2 sm:items-center lg:items-start">
             {/* Reserve the button's height while `me` loads, so the page doesn't jump. */}
@@ -96,6 +116,7 @@ function Landing() {
                   <SignInButton
                     size="lg"
                     className="w-full sm:w-auto"
+                    next={next}
                     onStart={() => setErrorMessage(null)}
                   >
                     Continue with Google

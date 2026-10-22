@@ -26,7 +26,7 @@ test.describe('signed out', () => {
     page,
   }) => {
     await page.goto('/account');
-    await expect(page).toHaveURL(`${WEB_ORIGIN}/`);
+    await expect(page).toHaveURL(`${WEB_ORIGIN}/?next=%2Faccount`);
     await expect(
       page.getByRole('button', { name: 'Continue with Google' }),
     ).toBeVisible();
@@ -36,7 +36,7 @@ test.describe('signed out', () => {
     page,
   }) => {
     await page.goto('/app/projects');
-    await expect(page).toHaveURL(`${WEB_ORIGIN}/`);
+    await expect(page).toHaveURL(`${WEB_ORIGIN}/?next=%2Fapp%2Fprojects`);
     await expect(
       page.getByRole('button', { name: 'Continue with Google' }),
     ).toBeVisible();

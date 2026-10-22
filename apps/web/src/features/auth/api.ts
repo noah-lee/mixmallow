@@ -2,6 +2,8 @@ import {
   type AuthProvider,
   type MeResponse,
   meResponseSchema,
+  type ReturnPath,
+  returnPathSchema,
 } from "@repo/shared/schemas"
 import {
   queryOptions,
@@ -39,8 +41,21 @@ export const authProviderLabels: Record<AuthProvider, string> = {
   google: "Google",
 }
 
-export function signIn(provider: AuthProvider) {
-  window.location.href = `/api/auth/${provider}/start`
+export function signIn(provider: AuthProvider, next?: ReturnPath) {
+  const query = next ? `?${new URLSearchParams({ next })}` : ""
+  window.location.href = `/api/auth/${provider}/start${query}`
+}
+
+// The page to come back to after signing in. Undefined for `/app`, where a sign-in lands anyway.
+export function returnPathFor(location: {
+  pathname: string
+  searchStr: string
+}): ReturnPath | undefined {
+  if (location.pathname === "/app" || location.pathname === "/app/") {
+    return undefined
+  }
+  const path = location.pathname + location.searchStr
+  return returnPathSchema.safeParse(path).success ? path : undefined
 }
 
 // Set `me` to null rather than invalidating it: the route guards read it with

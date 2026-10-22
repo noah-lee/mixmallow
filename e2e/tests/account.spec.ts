@@ -168,8 +168,12 @@ test('sign out ends the session', async ({ page, context }) => {
   await openAccount(page);
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await expect(page).toHaveURL(`${WEB_ORIGIN}/`);
+  await expect(
+    page.getByRole('button', { name: 'Continue with Google' }),
+  ).toBeVisible();
+  await expect(page.getByText('Sign in to continue.')).toHaveCount(0);
   await page.goto('/account');
-  await expect(page).toHaveURL(`${WEB_ORIGIN}/`);
+  await expect(page).toHaveURL(`${WEB_ORIGIN}/?next=%2Faccount`);
 });
 
 test('sign out on all devices ends every session', async ({
@@ -186,6 +190,10 @@ test('sign out on all devices ends every session', async ({
   await expect(dialog).toContainText('Sign out on all devices?');
   await dialog.getByRole('button', { name: 'Sign out' }).click();
   await expect(page).toHaveURL(`${WEB_ORIGIN}/`);
+  await expect(
+    page.getByRole('button', { name: 'Continue with Google' }),
+  ).toBeVisible();
+  await expect(page.getByText('Sign in to continue.')).toHaveCount(0);
 
   const refresh = await page.request.post(`${WEB_ORIGIN}/api/auth/refresh`, {
     headers: {

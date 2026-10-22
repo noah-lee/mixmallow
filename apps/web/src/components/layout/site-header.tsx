@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router"
+import { Link, useMatch } from "@tanstack/react-router"
 import { ModeToggle } from "@/components/layout/mode-toggle"
 import { UserAvatar } from "@/components/layout/user-avatar"
 import { useMe } from "@/features/auth/api"
@@ -10,6 +10,8 @@ const focusRing =
 
 export function SiteHeader() {
   const me = useMe()
+  // Only the landing route validates `next`; another page's ?next must not be carried.
+  const next = useMatch({ from: "/", shouldThrow: false })?.search.next
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background/80 pt-[env(safe-area-inset-top)] backdrop-blur">
@@ -43,7 +45,9 @@ export function SiteHeader() {
             </>
           ) : (
             !me.isLoading && (
-              <SignInButton variant="ghost">Sign in</SignInButton>
+              <SignInButton variant="ghost" next={next}>
+                Sign in
+              </SignInButton>
             )
           )}
         </div>
