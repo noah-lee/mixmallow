@@ -206,3 +206,24 @@ export async function releaseJob(
     })
     .where(current(job));
 }
+
+// Queues every lossless track that has neither a preview nor a job (a failed job counts,
+// so it is not retried). Safe to re-run. Returns how many jobs it queued.
+export async function backfillJobs(db: Database): Promise<number> {
+  const formats = sql.join(
+    PREVIEW_SOURCE_FORMATS.map((format) => sql`${format}`),
+    sql`, `,
+  );
+  return db.transaction(async (tx) => {
+    const queued = await tx.execute(sql`
+      insert into transcode_jobs (track_id)
+      select t.id from tracks t
+      where t.format in (${formats})
+        and t.preview_key is null
+        and not exists (select 1 from transcode_jobs j where j.track_id = t.id)
+      on conflict do nothing
+      returning id`);
+    if (queued.length > 0) await notifyWorkers(tx);
+    return queued.length;
+  });
+}
