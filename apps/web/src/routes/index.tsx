@@ -92,13 +92,17 @@ function Landing() {
           </p>
 
           {errorMessage && (
-            <Alert variant="destructive" className="text-left sm:max-w-md">
+            <Alert variant="destructive" className="text-left sm:max-w-xl">
               <CircleAlert />
               <AlertDescription>{errorMessage}</AlertDescription>
             </Alert>
           )}
-          {next && !errorMessage && me.data === null && (
-            <Alert role="status" className="text-left sm:max-w-md">
+          {/* Shown while `me` loads too, so it doesn't pop in above the button. */}
+          {next && !errorMessage && !me.data && (
+            <Alert
+              role="status"
+              className="text-left sm:max-w-xl *:[svg]:text-muted-foreground"
+            >
               <Info />
               <AlertDescription>Sign in to continue.</AlertDescription>
             </Alert>
