@@ -1,8 +1,23 @@
 import type { Note } from "@repo/shared/schemas"
-import { CircleAlert, Pause, Play, ZoomIn, ZoomOut } from "lucide-react"
+import {
+  CircleAlert,
+  Pause,
+  Play,
+  Volume1,
+  Volume2,
+  VolumeX,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react"
 import { useState } from "react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { Slider } from "@/components/ui/slider"
 import { Spinner } from "@/components/ui/spinner"
 import { formatDuration } from "@/lib/format"
 import type { Player } from "./use-player"
@@ -20,6 +35,12 @@ export function PlayerPanel({
   const levels = zoomLevels(player.durationMs)
   const [level, setLevel] = useState(0)
   const zoom = levels[level] ?? 1
+  const zoomStep = (step: 1 | -1) => {
+    const next = Math.min(levels.length - 1, Math.max(0, level + step))
+    if (next === level) return false
+    setLevel(next)
+    return true
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -31,6 +52,7 @@ export function PlayerPanel({
         zoom={zoom}
         notes={notes}
         onSeek={player.seek}
+        onZoomStep={zoomStep}
       />
       <div className="flex items-center gap-3">
         <Button
@@ -59,12 +81,13 @@ export function PlayerPanel({
           </span>
         </p>
         <span className="flex-1" />
+        {player.volumeSupported && <VolumeControl player={player} />}
         <Button
           variant="icon"
           size="icon"
           aria-label="Zoom out"
           disabled={level === 0}
-          onClick={() => setLevel((l) => Math.max(0, l - 1))}
+          onClick={() => zoomStep(-1)}
         >
           <ZoomOut />
         </Button>
@@ -73,12 +96,54 @@ export function PlayerPanel({
           size="icon"
           aria-label="Zoom in"
           disabled={level >= levels.length - 1}
-          onClick={() => setLevel((l) => Math.min(levels.length - 1, l + 1))}
+          onClick={() => zoomStep(1)}
         >
           <ZoomIn />
         </Button>
       </div>
     </div>
+  )
+}
+
+function VolumeControl({ player }: { player: Player }) {
+  const Icon =
+    player.volume === 0 ? VolumeX : player.volume < 0.5 ? Volume1 : Volume2
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        {/* Phones have volume keys, and the row has no room for it beside the time. */}
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Volume"
+          className="hidden sm:inline-flex"
+        >
+          <Icon />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="top"
+        className="w-auto flex-row items-center gap-1 rounded-full py-0 pr-5 pl-1"
+      >
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={player.volume === 0 ? "Unmute" : "Mute"}
+          onClick={player.toggleMute}
+        >
+          <Icon />
+        </Button>
+        <Slider
+          className="w-32"
+          thumbLabel="Volume"
+          min={0}
+          max={1}
+          step={0.01}
+          value={[player.volume]}
+          onValueChange={([value]) => player.setVolume(value ?? 0)}
+        />
+      </PopoverContent>
+    </Popover>
   )
 }
 

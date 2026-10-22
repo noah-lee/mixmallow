@@ -2,6 +2,7 @@ import type { Note } from "@repo/shared/schemas"
 import {
   type KeyboardEvent,
   type PointerEvent,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -15,6 +16,10 @@ const BAR_PITCH = 3
 // Markers closer than a touch target merge into one dot with a count.
 const MARKER_TARGET = 44
 const KEY_STEP_MS = 5000
+// The scroller's px-3: content x 0 sits this far into the scroll area.
+const PAD = 12
+// Wheel distance per zoom level: one mouse notch, or a moderate trackpad pinch.
+const WHEEL_STEP = 50
 
 // One bar per 3px (2px bar, 1px gap), each the loudest peak in its slice of the track. Zoomed
 // past the peaks' resolution, neighbouring bars repeat a peak rather than leaving gaps.
@@ -87,6 +92,7 @@ export function Waveform({
   zoom,
   notes,
   onSeek,
+  onZoomStep,
 }: {
   peaks: number[]
   durationMs: number
@@ -95,6 +101,8 @@ export function Waveform({
   zoom: number
   notes: Note[]
   onSeek: (ms: number) => void
+  // Returns whether the zoom changed (false at either end).
+  onZoomStep: (step: 1 | -1) => boolean
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -120,14 +128,33 @@ export function Waveform({
   )
   const playheadX = durationMs > 0 ? (currentMs / durationMs) * width : 0
 
-  // Keep the playhead where it was on screen across a zoom change.
+  // Across a zoom change, keep the moment under the cursor (wheel zoom) or the playhead
+  // (buttons) where it was on screen.
+  const anchorRef = useRef<{ ms: number; offset: number } | null>(null)
   const prevWidth = useRef(width)
   useLayoutEffect(() => {
     const scroller = scrollerRef.current
     if (!scroller || prevWidth.current === width) return
     prevWidth.current = width
-    scroller.scrollLeft = playheadX - scroller.clientWidth / 2
-  }, [width, playheadX])
+    const anchor = anchorRef.current
+    anchorRef.current = null
+    scroller.scrollLeft = anchor
+      ? PAD + (anchor.ms / durationMs) * width - anchor.offset
+      : playheadX - scroller.clientWidth / 2
+  }, [width, playheadX, durationMs])
+
+  // The native scrollbar is hidden (it looks different in every browser); this mirrors it.
+  const [thumb, setThumb] = useState({ start: 0, size: 1 })
+  const syncThumb = useCallback(() => {
+    const scroller = scrollerRef.current
+    if (!scroller || scroller.scrollWidth === 0) return
+    const total = scroller.scrollWidth
+    setThumb({
+      start: scroller.scrollLeft / total,
+      size: scroller.clientWidth / total,
+    })
+  }, [])
+  useLayoutEffect(syncThumb, [syncThumb, width])
 
   // While playing zoomed in, turn the page when the playhead runs off screen.
   useEffect(() => {
@@ -168,6 +195,77 @@ export function Waveform({
     onSeek(msAt(event.clientX))
   }
 
+  // Ctrl/Cmd + wheel (and trackpad pinch, which arrives as one) zooms; a plain wheel still
+  // scrolls the page. React's onWheel is passive, so it couldn't stop the browser zooming.
+  const wheelRef = useRef(0)
+  const onWheelRef = useRef<(event: WheelEvent) => void>(() => {})
+  onWheelRef.current = (event) => {
+    if (!event.ctrlKey && !event.metaKey) return
+    event.preventDefault()
+    const unit =
+      event.deltaMode === 1
+        ? 16
+        : event.deltaMode === 2
+          ? window.innerHeight
+          : 1
+    const delta = event.deltaY * unit
+    if (Math.sign(delta) !== Math.sign(wheelRef.current)) wheelRef.current = 0
+    wheelRef.current += delta
+    if (Math.abs(wheelRef.current) < WHEEL_STEP) return
+    const step = wheelRef.current < 0 ? 1 : -1
+    wheelRef.current = 0
+    const scroller = scrollerRef.current
+    if (!scroller) return
+    const anchor = {
+      ms: msAt(event.clientX),
+      offset: event.clientX - scroller.getBoundingClientRect().left,
+    }
+    if (onZoomStep(step)) anchorRef.current = anchor
+  }
+  useEffect(() => {
+    const scroller = scrollerRef.current
+    if (!scroller) return
+    const onWheel = (event: WheelEvent) => onWheelRef.current(event)
+    scroller.addEventListener("wheel", onWheel, { passive: false })
+    return () => scroller.removeEventListener("wheel", onWheel)
+  }, [])
+
+  const barRef = useRef<HTMLDivElement>(null)
+  const barDragRef = useRef<{
+    id: number
+    startX: number
+    startScroll: number
+  } | null>(null)
+  // Pressing the bar off the thumb centres the view there; dragging then pans from it.
+  const onBarPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    const scroller = scrollerRef.current
+    const rect = barRef.current?.getBoundingClientRect()
+    if (event.button !== 0 || !scroller || !rect) return
+    const ratio = (event.clientX - rect.left) / rect.width
+    if (ratio < thumb.start || ratio > thumb.start + thumb.size) {
+      scroller.scrollLeft =
+        ratio * scroller.scrollWidth - scroller.clientWidth / 2
+    }
+    event.currentTarget.setPointerCapture(event.pointerId)
+    barDragRef.current = {
+      id: event.pointerId,
+      startX: event.clientX,
+      startScroll: scroller.scrollLeft,
+    }
+  }
+  const onBarPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const drag = barDragRef.current
+    const scroller = scrollerRef.current
+    const rect = barRef.current?.getBoundingClientRect()
+    if (drag?.id !== event.pointerId || !scroller || !rect) return
+    scroller.scrollLeft =
+      drag.startScroll +
+      ((event.clientX - drag.startX) / rect.width) * scroller.scrollWidth
+  }
+  const onBarPointerEnd = () => {
+    barDragRef.current = null
+  }
+
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     const next = {
       ArrowLeft: currentMs - KEY_STEP_MS,
@@ -181,97 +279,126 @@ export function Waveform({
   }
 
   return (
-    <div
-      ref={scrollerRef}
-      className={cn(
-        "relative h-32 overflow-x-auto overflow-y-hidden rounded-xl bg-surface px-3 [scrollbar-width:thin] has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-ring md:h-36 lg:h-44",
-        zoom === 1 && "overflow-x-hidden",
-      )}
-    >
-      {/* The keyboard and screen-reader way to seek; pointers use the panel itself. */}
-      <input
-        type="range"
-        aria-label="Seek"
-        min={0}
-        max={durationMs}
-        step="any"
-        value={currentMs}
-        aria-valuetext={`${formatDuration(currentMs)} of ${formatDuration(durationMs)}`}
-        className="sr-only"
-        onChange={(event) => onSeek(Number(event.target.value))}
-        onKeyDown={onKeyDown}
-      />
+    <div className="relative">
       <div
-        ref={contentRef}
-        data-waveform
-        data-zoom={zoom}
+        ref={scrollerRef}
         className={cn(
-          "relative flex h-full cursor-pointer flex-col",
-          zoom === 1 ? "touch-pan-y" : "touch-auto",
+          "relative h-32 overflow-x-auto overflow-y-hidden rounded-xl bg-surface px-3 [scrollbar-width:none] has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-ring md:h-36 lg:h-44 [&::-webkit-scrollbar]:hidden",
+          zoom === 1 && "overflow-x-hidden",
         )}
-        style={{ width }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={() => {
-          dragRef.current = null
-        }}
+        onScroll={syncThumb}
       >
-        <div className="relative mt-3 flex-1">
-          <Bars d={d} width={width} className="stroke-wave" />
-          <div
-            className="absolute inset-y-0 left-0 overflow-hidden"
-            style={{ width: playheadX }}
-          >
-            <Bars d={d} width={width} className="stroke-wave-played" />
+        {/* The keyboard and screen-reader way to seek; pointers use the panel itself. */}
+        <input
+          type="range"
+          aria-label="Seek"
+          min={0}
+          max={durationMs}
+          step="any"
+          value={currentMs}
+          aria-valuetext={`${formatDuration(currentMs)} of ${formatDuration(durationMs)}`}
+          className="sr-only"
+          onChange={(event) => onSeek(Number(event.target.value))}
+          onKeyDown={onKeyDown}
+        />
+        <div
+          ref={contentRef}
+          data-waveform
+          data-zoom={zoom}
+          className={cn(
+            "relative flex h-full cursor-pointer flex-col",
+            zoom === 1 ? "touch-pan-y" : "touch-auto",
+          )}
+          style={{ width }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={() => {
+            dragRef.current = null
+          }}
+        >
+          <div className="relative mt-3 flex-1">
+            <Bars d={d} width={width} className="stroke-wave" />
+            <div
+              className="absolute inset-y-0 left-0 overflow-hidden"
+              style={{ width: playheadX }}
+            >
+              <Bars d={d} width={width} className="stroke-wave-played" />
+            </div>
+            <div
+              data-playhead
+              className="pointer-events-none absolute -inset-y-1 w-0.5 -translate-x-1/2 rounded-full bg-playhead"
+              style={{ left: playheadX }}
+            />
           </div>
-          <div
-            data-playhead
-            className="pointer-events-none absolute -inset-y-1 w-0.5 -translate-x-1/2 rounded-full bg-playhead"
-            style={{ left: playheadX }}
-          />
-        </div>
-        {/* Same action as tapping the note in the list, which is the keyboard path. */}
-        <div aria-hidden="true" className="relative mb-3 h-5 shrink-0">
-          {clusters.map((cluster) => {
-            const done = cluster.notes.every((n) => n.done)
-            const count = cluster.notes.length
-            return (
-              <button
-                key={cluster.notes[0]?.id}
-                type="button"
-                tabIndex={-1}
-                data-marker
-                data-count={count}
-                className="absolute top-1/2 flex size-11 -translate-1/2 items-center justify-center"
-                // Inset from the ends so a count badge and its hit area stay inside the panel.
-                style={{ left: Math.min(Math.max(cluster.x, 10), width - 10) }}
-                onPointerDown={(event) => event.stopPropagation()}
-                onPointerUp={(event) => event.stopPropagation()}
-                onClick={() => onSeek(cluster.ms)}
-              >
-                {count === 1 ? (
-                  <span
-                    className={cn(
-                      "size-3 rounded-full",
-                      done ? "bg-marker-done" : "bg-marker",
-                    )}
-                  />
-                ) : (
-                  <span
-                    className={cn(
-                      "flex h-5 min-w-5 items-center justify-center rounded-full px-1 font-mono text-label text-background tabular-nums",
-                      done ? "bg-marker-done" : "bg-marker",
-                    )}
-                  >
-                    {count}
-                  </span>
-                )}
-              </button>
-            )
-          })}
+          {/* Same action as tapping the note in the list, which is the keyboard path. */}
+          <div aria-hidden="true" className="relative mb-3 h-5 shrink-0">
+            {clusters.map((cluster) => {
+              const done = cluster.notes.every((n) => n.done)
+              const count = cluster.notes.length
+              return (
+                <button
+                  key={cluster.notes[0]?.id}
+                  type="button"
+                  tabIndex={-1}
+                  data-marker
+                  data-count={count}
+                  className="absolute top-1/2 flex size-11 -translate-1/2 items-center justify-center"
+                  // Inset from the ends so a count badge and its hit area stay inside the panel.
+                  style={{
+                    left: Math.min(Math.max(cluster.x, 10), width - 10),
+                  }}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onPointerUp={(event) => event.stopPropagation()}
+                  onClick={() => onSeek(cluster.ms)}
+                >
+                  {count === 1 ? (
+                    <span
+                      className={cn(
+                        "size-3 rounded-full",
+                        done ? "bg-marker-done" : "bg-marker",
+                      )}
+                    />
+                  ) : (
+                    <span
+                      className={cn(
+                        "flex h-5 min-w-5 items-center justify-center rounded-full px-1 font-mono text-label text-background tabular-nums",
+                        done ? "bg-marker-done" : "bg-marker",
+                      )}
+                    >
+                      {count}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
         </div>
       </div>
+      {zoom > 1 && (
+        // Pointer-only: keyboard and screen-reader users follow the playhead, which pages
+        // the view along.
+        <div
+          ref={barRef}
+          aria-hidden="true"
+          data-scrollbar
+          className="group absolute inset-x-3 bottom-0 h-3 cursor-pointer touch-none"
+          onPointerDown={onBarPointerDown}
+          onPointerMove={onBarPointerMove}
+          onPointerUp={onBarPointerEnd}
+          onPointerCancel={onBarPointerEnd}
+        >
+          <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-foreground/5" />
+          <div
+            data-scrollbar-thumb
+            className="absolute top-1/2 h-1 -translate-y-1/2 rounded-full bg-foreground/20 transition-[height,background-color] duration-120 group-hover:h-1.5 group-hover:bg-foreground/35 group-active:h-1.5 group-active:bg-foreground/35"
+            style={{
+              left: `${thumb.start * 100}%`,
+              width: `${thumb.size * 100}%`,
+            }}
+          />
+        </div>
+      )}
     </div>
   )
 }

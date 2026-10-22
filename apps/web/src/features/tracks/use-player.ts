@@ -4,6 +4,24 @@ import { audioUrlQueryOptions } from "./api"
 
 export type Player = ReturnType<typeof usePlayer>
 
+const VOLUME_KEY = "volume"
+
+function storedVolume(): number {
+  try {
+    const value = Number(localStorage.getItem(VOLUME_KEY) ?? 1)
+    return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 1
+  } catch {
+    return 1
+  }
+}
+
+// iOS ignores writes to `volume` (the hardware buttons own it), so offer no slider there.
+function volumeAdjustable(): boolean {
+  const probe = new Audio()
+  probe.volume = 0.5
+  return probe.volume === 0.5
+}
+
 // The position is ours, not the media element's: seeking and the playhead keep working while
 // the audio is still loading or has failed, and the element catches up once it has metadata.
 export function usePlayer(trackId: string, durationMs: number) {
@@ -23,6 +41,9 @@ export function usePlayer(trackId: string, durationMs: number) {
   const [ready, setReady] = useState(false)
   const [waiting, setWaiting] = useState(false)
   const [mediaFailed, setMediaFailed] = useState(false)
+  const [volumeSupported] = useState(volumeAdjustable)
+  const [volume, setVolumeState] = useState(storedVolume)
+  const [muted, setMuted] = useState(false)
   // Playback interrupted by a URL refresh that picks up again once the new source loads.
   // It still reads as playing (and buffering) so the button offers Pause, which cancels it.
   const [resuming, setResumingState] = useState(false)
@@ -105,6 +126,29 @@ export function usePlayer(trackId: string, durationMs: number) {
   useEffect(() => () => audio.removeAttribute("src"), [audio])
 
   useEffect(() => {
+    audio.volume = volume
+    audio.muted = muted
+  }, [audio, volume, muted])
+
+  const setVolume = useCallback((value: number) => {
+    setVolumeState(value)
+    setMuted(false)
+    try {
+      localStorage.setItem(VOLUME_KEY, String(value))
+    } catch {}
+  }, [])
+
+  // Unmuting from a slider dragged to zero would stay silent, so it comes back at full.
+  const toggleMute = useCallback(() => {
+    if (muted || volume === 0) {
+      setMuted(false)
+      if (volume === 0) setVolume(1)
+    } else {
+      setMuted(true)
+    }
+  }, [muted, volume, setVolume])
+
+  useEffect(() => {
     if (!playing) return
     let frame = 0
     const tick = () => {
@@ -153,9 +197,14 @@ export function usePlayer(trackId: string, durationMs: number) {
     playing: playing || resuming,
     buffering: !failed && (!ready || waiting || resuming),
     failed,
+    volumeSupported,
+    // What the listener hears: muting reads as zero without losing the level to come back to.
+    volume: muted ? 0 : volume,
     seek,
     toggle,
     retry,
+    setVolume,
+    toggleMute,
   }
 }
 

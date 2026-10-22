@@ -297,10 +297,79 @@ test('zoomed', async ({ page, context }) => {
   expect(playhead.x).toBeLessThan(view.x + view.width);
   await captureScreenshot(page, 'track-zoomed');
 
+  // The slim bar under the waveform pans the view.
+  const thumb = page.locator('[data-scrollbar-thumb]');
+  const thumbBox = await thumb.boundingBox();
+  if (!thumbBox) throw new Error('missing thumb');
+  const before = await scroller.evaluate((el) => el.scrollLeft);
+  await page.mouse.move(
+    thumbBox.x + thumbBox.width / 2,
+    thumbBox.y + thumbBox.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    thumbBox.x - 40 + thumbBox.width / 2,
+    thumbBox.y + thumbBox.height / 2,
+  );
+  await page.mouse.up();
+  expect(await scroller.evaluate((el) => el.scrollLeft)).toBeLessThan(before);
+
   await page.getByRole('button', { name: 'Zoom out' }).click();
   await page.getByRole('button', { name: 'Zoom out' }).click();
   await expect(waveform(page)).toHaveAttribute('data-zoom', '1');
   expect(await overflow()).toBe(0);
+});
+
+test('Ctrl + wheel zooms around the cursor, a plain wheel does not', async ({
+  page,
+  context,
+}) => {
+  // Phones have no wheel, and mobile emulation turns Ctrl + wheel into a pinch.
+  test.skip(test.info().project.name === 'mobile', 'desktop gesture');
+  const { project, track } = await seedTrack(context);
+  await openTrack(page, project.id, track.id);
+  const box = await waveform(page).boundingBox();
+  if (!box) throw new Error('waveform has no box');
+  const x = box.x + box.width * 0.25;
+  await page.mouse.move(x, box.y + box.height / 3);
+
+  await page.mouse.wheel(0, -100);
+  await expect(waveform(page)).toHaveAttribute('data-zoom', '1');
+
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, -100);
+  await page.keyboard.up('Control');
+  await expect(waveform(page)).toHaveAttribute('data-zoom', '2');
+  // The moment that was under the cursor (25% in) still is.
+  const zoomed = await waveform(page).boundingBox();
+  if (!zoomed) throw new Error('waveform has no box');
+  expect((x - zoomed.x) / zoomed.width).toBeCloseTo(0.25, 2);
+});
+
+test('volume', async ({ page, context }) => {
+  test.skip(test.info().project.name === 'mobile', 'desktop and tablet only');
+  const { project, track } = await seedTrack(context);
+  await openTrack(page, project.id, track.id);
+  await page.getByRole('button', { name: 'Volume' }).click();
+  const slider = page.getByRole('slider', { name: 'Volume' });
+  await expect(slider).toHaveAttribute('aria-valuenow', '1');
+  await slider.focus();
+  await page.keyboard.press('PageDown');
+  await expect(slider).toHaveAttribute('aria-valuenow', '0.9');
+  await captureScreenshot(page, 'track-volume', { fullPage: false });
+
+  await page.getByRole('button', { name: 'Mute' }).click();
+  await expect(slider).toHaveAttribute('aria-valuenow', '0');
+  await page.getByRole('button', { name: 'Unmute' }).click();
+  await expect(slider).toHaveAttribute('aria-valuenow', '0.9');
+
+  // The level is remembered across visits.
+  await page.reload();
+  await page.getByRole('button', { name: 'Volume' }).click();
+  await expect(page.getByRole('slider', { name: 'Volume' })).toHaveAttribute(
+    'aria-valuenow',
+    '0.9',
+  );
 });
 
 test('no notes', async ({ page, context }) => {
