@@ -128,7 +128,9 @@ export function usePlayer(trackId: string, durationMs: number) {
   const toggle = useCallback(() => {
     if (failed) return
     if (resumeRef.current) {
+      // The resume may already have called play() and be waiting for data.
       setResuming(false)
+      audio.pause()
     } else if (audio.paused) {
       // A rejected play() (source failing, interrupted by a pause) surfaces through the
       // element's own error event.
