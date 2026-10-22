@@ -1,10 +1,12 @@
 import { randomBytes } from 'node:crypto';
-import { projects } from '@repo/db';
+import { projectMembers, projects, users } from '@repo/db';
 import {
   type InviteLinkResponse,
+  type MemberListResponse,
+  memberUserIdParamsSchema,
   projectIdParamsSchema,
 } from '@repo/shared/schemas';
-import { eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { projectRole } from './access.ts';
 
@@ -76,4 +78,75 @@ export const memberRoutes: FastifyPluginAsyncZod = async (app) => {
       .where(eq(projects.id, projectId));
     return reply.code(204).send();
   });
+
+  // Owner first, then collaborators in join order. Every member may read it.
+  app.get(
+    '/:projectId/members',
+    options,
+    async (req, reply): Promise<MemberListResponse | typeof notFound> => {
+      const { projectId } = req.params;
+      if (!(await projectRole(app.db, req.user.sub, projectId))) {
+        reply.code(404);
+        return notFound;
+      }
+      const person = { id: users.id, name: users.name, picture: users.picture };
+      const [owner] = await app.db
+        .select(person)
+        .from(projects)
+        .innerJoin(users, eq(users.id, projects.userId))
+        .where(eq(projects.id, projectId));
+      if (!owner) throw new Error('project vanished after role check');
+      const collaborators = await app.db
+        .select({ ...person, joinedAt: projectMembers.createdAt })
+        .from(projectMembers)
+        .innerJoin(users, eq(users.id, projectMembers.userId))
+        .where(eq(projectMembers.projectId, projectId))
+        .orderBy(asc(projectMembers.createdAt), asc(projectMembers.userId));
+      return {
+        items: [
+          { ...owner, role: 'owner', joinedAt: null },
+          ...collaborators.map(({ joinedAt, ...rest }) => ({
+            ...rest,
+            role: 'collaborator' as const,
+            joinedAt: joinedAt.toISOString(),
+          })),
+        ],
+      };
+    },
+  );
+
+  // The owner removes anyone who joined; a collaborator may remove only themself (leave).
+  app.delete(
+    '/:projectId/members/:userId',
+    {
+      onRequest: [app.authenticate],
+      schema: { params: memberUserIdParamsSchema },
+    },
+    async (req, reply) => {
+      const { projectId, userId } = req.params;
+      const role = await projectRole(app.db, req.user.sub, projectId);
+      if (!role) {
+        reply.code(404);
+        return notFound;
+      }
+      if (role === 'collaborator' && userId !== req.user.sub) {
+        reply.code(403);
+        return forbidden;
+      }
+      const removed = await app.db
+        .delete(projectMembers)
+        .where(
+          and(
+            eq(projectMembers.projectId, projectId),
+            eq(projectMembers.userId, userId),
+          ),
+        )
+        .returning({ userId: projectMembers.userId });
+      if (removed.length === 0) {
+        reply.code(404);
+        return notFound;
+      }
+      return reply.code(204).send();
+    },
+  );
 };

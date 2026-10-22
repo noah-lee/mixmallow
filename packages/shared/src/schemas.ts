@@ -188,6 +188,25 @@ export const inviteLinkResponseSchema = z.object({ url: z.url().nullable() });
 
 export type InviteLinkResponse = z.infer<typeof inviteLinkResponseSchema>;
 
+export const memberUserIdParamsSchema = z.object({
+  projectId: z.uuid(),
+  userId: z.uuid(),
+});
+
+export const memberSchema = personSchema.extend({
+  role: projectRoleSchema,
+  // null for the owner.
+  joinedAt: z.iso.datetime().nullable(),
+});
+
+export type Member = z.infer<typeof memberSchema>;
+
+export const memberListResponseSchema = z.object({
+  items: z.array(memberSchema),
+});
+
+export type MemberListResponse = z.infer<typeof memberListResponseSchema>;
+
 export const trackSummarySchema = z.object({
   id: z.uuid(),
   projectId: z.uuid(),
