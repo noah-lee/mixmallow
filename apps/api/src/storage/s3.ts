@@ -1,3 +1,7 @@
+import { createReadStream, createWriteStream } from 'node:fs';
+import { stat } from 'node:fs/promises';
+import type { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import {
   DeleteObjectCommand,
   GetObjectCommand,
@@ -87,6 +91,26 @@ export function createS3Driver(config: Config): StorageDriver {
 
     async delete(key) {
       await client.send(new DeleteObjectCommand({ Bucket, Key: key }));
+    },
+
+    async download(key, filePath) {
+      const res = await client.send(new GetObjectCommand({ Bucket, Key: key }));
+      if (!res.Body) throw new Error(`object ${key} has no body`);
+      await pipeline(res.Body as Readable, createWriteStream(filePath));
+    },
+
+    async upload({ key, filePath, contentType }) {
+      // A stream body needs an explicit length, or the SDK can't sign the PUT.
+      const { size } = await stat(filePath);
+      await client.send(
+        new PutObjectCommand({
+          Bucket,
+          Key: key,
+          Body: createReadStream(filePath),
+          ContentType: contentType,
+          ContentLength: size,
+        }),
+      );
     },
   };
 }

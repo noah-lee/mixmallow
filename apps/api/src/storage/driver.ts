@@ -20,6 +20,13 @@ export type StorageDriver = {
   // null when the object doesn't exist.
   headSize(key: string): Promise<number | null>;
   delete(key: string): Promise<void>;
+  // Server-side transfers for the transcode worker; both stream through a local file.
+  download(key: string, filePath: string): Promise<void>;
+  upload(input: {
+    key: string;
+    filePath: string;
+    contentType: string;
+  }): Promise<void>;
 };
 
 export type Storage = Omit<StorageDriver, 'delete'> & {
