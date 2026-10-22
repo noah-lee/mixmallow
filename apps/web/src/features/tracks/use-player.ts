@@ -15,6 +15,7 @@ export function usePlayer(trackId: string, durationMs: number) {
   })
   const positionRef = useRef(0)
   const retriedRef = useRef(false)
+  const resumeRef = useRef(false)
   const refetchRef = useRef(audioUrl.refetch)
   refetchRef.current = audioUrl.refetch
   const [currentMs, setCurrentMs] = useState(0)
@@ -41,6 +42,10 @@ export function usePlayer(trackId: string, durationMs: number) {
       loadedmetadata: () => {
         setReady(true)
         audio.currentTime = positionRef.current / 1000
+        if (resumeRef.current) {
+          resumeRef.current = false
+          audio.play().catch(() => {})
+        }
       },
       play: () => setPlaying(true),
       pause: () => setPlaying(false),
@@ -49,16 +54,23 @@ export function usePlayer(trackId: string, durationMs: number) {
       playing: () => setWaiting(false),
       canplay: () => setWaiting(false),
       error: async () => {
+        const wasPlaying = !audio.paused
         setPlaying(false)
         setWaiting(false)
         // The signed URL may have expired: ask for a fresh one once before giving up.
         if (retriedRef.current) {
+          resumeRef.current = false
           setMediaFailed(true)
           return
         }
         retriedRef.current = true
+        // A fresh link can point at another file (the preview): carry on from the same spot.
+        resumeRef.current = wasPlaying
         const result = await refetchRef.current()
-        if (result.isError) setMediaFailed(true)
+        if (result.isError) {
+          resumeRef.current = false
+          setMediaFailed(true)
+        }
       },
     }
     for (const [name, handler] of Object.entries(on)) {
@@ -117,6 +129,7 @@ export function usePlayer(trackId: string, durationMs: number) {
 
   const retry = useCallback(() => {
     retriedRef.current = false
+    resumeRef.current = false
     setMediaFailed(false)
     void refetchRef.current()
   }, [])

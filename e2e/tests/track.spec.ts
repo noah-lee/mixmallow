@@ -579,6 +579,53 @@ test.describe('the audio fails', () => {
     await expect(page.getByRole('alert')).toHaveCount(0);
     await waitForAudio(page);
   });
+
+  test('a refreshed audio URL keeps position and playing', async ({
+    page,
+    context,
+  }) => {
+    const { user, project, track } = await seedTrack(context);
+    // The original serves only its first 20 s; past that its link is refused, as an expired one is.
+    const chunkEnd = 44 + 8000 * 2 * 20;
+    await page.route(`${STORAGE_ORIGIN}/${track.storageKey}*`, (route) => {
+      const range = /bytes=(\d+)-/.exec(route.request().headers().range ?? '');
+      if (range && Number(range[1]) > 0) return route.fulfill({ status: 403 });
+      return route.fulfill({
+        status: 206,
+        contentType: 'audio/wav',
+        headers: {
+          'Accept-Ranges': 'bytes',
+          'Content-Range': `bytes 0-${chunkEnd - 1}/${AUDIO.length}`,
+        },
+        body: AUDIO.subarray(0, chunkEnd),
+      });
+    });
+    const previewKey = `users/${user.id}/${crypto.randomUUID()}.m4a`;
+    let previewRequests = 0;
+    page.on('request', (req) => {
+      if (req.url().startsWith(`${STORAGE_ORIGIN}/${previewKey}`))
+        previewRequests++;
+    });
+    await openTrack(page, project.id, track.id);
+    await waitForAudio(page);
+    // The preview becomes ready while the page is open.
+    await app.db
+      .$client`update tracks set preview_key = ${previewKey} where id = ${track.id}`;
+
+    await playButton(page).click();
+    await expect(pauseButton(page)).toBeVisible();
+    await noteRow(page, 'Kick and bass')
+      .getByRole('button', { name: /Play from/ })
+      .click();
+
+    await expect.poll(() => previewRequests).toBeGreaterThan(0);
+    await expect(currentTime(page)).toHaveText(/^0:4[3-9]$/, { timeout: 5000 });
+    await expect(pauseButton(page)).toBeVisible();
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await captureScreenshot(page, 'track-preview-resumed', {
+      waitForIdle: false,
+    });
+  });
 });
 
 test.describe('the track fails to load', () => {
