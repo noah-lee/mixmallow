@@ -127,6 +127,9 @@ const row = (page: Page, label: string) =>
     .getByRole('listitem')
     .filter({ hasText: new RegExp(`^${label}`) });
 const fileInput = (page: Page) => page.locator('input[type="file"]');
+// The header has a "Projects" link too, so stay inside the page.
+const backLink = (page: Page) =>
+  page.getByRole('main').getByRole('link', { name: 'Projects' });
 
 async function openProject(page: Page, id: string) {
   await page.goto(projectUrl(id));
@@ -142,6 +145,7 @@ test('loading', async ({ page, context }) => {
   await expect(
     page.getByRole('status', { name: 'Loading project' }),
   ).toBeVisible();
+  await expect(backLink(page)).toBeVisible();
   await captureScreenshot(page, 'project-loading', { waitForIdle: false });
 });
 
@@ -161,7 +165,18 @@ test('default', async ({ page, context }) => {
   await expect(
     page.getByRole('button', { name: 'Upload a new version' }),
   ).toBeEnabled();
+  await expect(backLink(page)).toBeVisible();
   await captureScreenshot(page, 'project-default');
+});
+
+test('back link opens the projects list', async ({ page, context }) => {
+  const { project } = await seedProject(context);
+  await openProject(page, project.id);
+  await backLink(page).click();
+  await expect(page).toHaveURL(`${WEB_ORIGIN}/app/projects`);
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Projects' }),
+  ).toBeVisible();
 });
 
 test('opening a version goes to its track page', async ({ page, context }) => {
@@ -426,6 +441,30 @@ test('rename project', async ({ page, context }) => {
   await expect(
     page.getByRole('heading', { level: 1, name: 'Midnight Drive (Club Mix)' }),
   ).toBeVisible();
+});
+
+test('a renamed project shows its new name in the list without a reload', async ({
+  page,
+  context,
+}) => {
+  await seedProject(context);
+  await page.goto('/app/projects');
+  await page.getByRole('link', { name: /^Midnight Drive/ }).click();
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Midnight Drive' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Project options' }).click();
+  await page.getByRole('menuitem', { name: 'Rename project' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Rename project' });
+  await dialog.getByLabel('Name').fill('Midnight Drive (Club Mix)');
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await expect(dialog).toBeHidden();
+
+  await backLink(page).click();
+  await expect(page).toHaveURL(`${WEB_ORIGIN}/app/projects`);
+  const list = page.getByRole('main').getByRole('listitem');
+  await expect(list).toHaveCount(1);
+  await expect(list).toContainText('Midnight Drive (Club Mix)');
 });
 
 test.describe('a rename the server refuses', () => {

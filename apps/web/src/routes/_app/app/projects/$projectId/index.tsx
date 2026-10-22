@@ -1,7 +1,7 @@
 import { MAX_FILE_BYTES, MB, projectIdParamsSchema } from "@repo/shared/schemas"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
-import { CircleAlert, Ellipsis, Pencil, Trash2 } from "lucide-react"
+import { ArrowLeft, CircleAlert, Ellipsis, Pencil, Trash2 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -131,6 +131,7 @@ function Project({ projectId }: { projectId: string }) {
 
   return (
     <div className="flex flex-col gap-6">
+      <BackToProjects />
       <div className="flex items-start gap-2">
         <div className="flex min-w-0 flex-1 flex-col gap-3">
           <h1 className="text-heading-1 break-words">{project.data.name}</h1>
@@ -297,22 +298,38 @@ function ProjectMenu({
   )
 }
 
+function BackToProjects() {
+  return (
+    <Link
+      to="/app/projects"
+      className="-mb-3 -ml-2 inline-flex min-h-11 items-center gap-1.5 self-start rounded-full px-2 text-sm font-semibold text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <ArrowLeft aria-hidden className="size-4" />
+      Projects
+    </Link>
+  )
+}
+
+// The back link stays real while loading, so it works before the data arrives.
 function ProjectSkeleton() {
   return (
-    <div
-      role="status"
-      aria-label="Loading project"
-      className="flex flex-col gap-6"
-    >
-      <div className="flex flex-col gap-3">
-        <Skeleton className="h-9 w-2/3 rounded-full" />
-        <Skeleton className="h-9 w-full rounded-full sm:w-52" />
-      </div>
-      <Skeleton className="h-28 rounded-4xl sm:h-20" />
-      <div className="flex flex-col gap-3">
-        {[0, 1, 2].map((i) => (
-          <Skeleton key={i} className="h-25 rounded-xl" />
-        ))}
+    <div className="flex flex-col gap-6">
+      <BackToProjects />
+      <div
+        role="status"
+        aria-label="Loading project"
+        className="flex flex-col gap-6"
+      >
+        <div className="flex flex-col gap-3">
+          <Skeleton className="h-9 w-2/3 rounded-full" />
+          <Skeleton className="h-9 w-full rounded-full sm:w-52" />
+        </div>
+        <Skeleton className="h-28 rounded-4xl sm:h-20" />
+        <div className="flex flex-col gap-3">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-25 rounded-xl" />
+          ))}
+        </div>
       </div>
     </div>
   )
