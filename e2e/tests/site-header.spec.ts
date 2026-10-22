@@ -42,6 +42,7 @@ test('signed in', async ({ page, context }) => {
   await signInWithProject(context);
   await page.goto('/account');
   await expect(projectsLink(page)).toBeVisible();
+  await expect(projectsLink(page)).not.toHaveAttribute('aria-current');
   await expect(
     page.getByRole('banner').getByRole('link', { name: 'Account' }),
   ).toBeVisible();
@@ -58,6 +59,7 @@ test('Projects opens the projects list', async ({ page, context }) => {
   await expect(
     page.getByRole('heading', { level: 1, name: 'Projects' }),
   ).toBeVisible();
+  await expect(projectsLink(page)).toHaveAttribute('aria-current', 'page');
   // Off the link, so the shot shows the active state without hover.
   await page.mouse.move(0, 0);
   await captureScreenshot(page, 'site-header-on-projects');
@@ -72,6 +74,7 @@ test('Projects opens the list from a project page', async ({
   await expect(
     page.getByRole('heading', { level: 1, name: 'Midnight Drive' }),
   ).toBeVisible();
+  await expect(projectsLink(page)).toHaveAttribute('aria-current', 'location');
   await projectsLink(page).click();
   await expect(page).toHaveURL(`${WEB_ORIGIN}/app/projects`);
 });

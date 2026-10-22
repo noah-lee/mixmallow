@@ -1,4 +1,4 @@
-import { Link, useMatch } from "@tanstack/react-router"
+import { Link, useLocation, useMatch } from "@tanstack/react-router"
 import { ModeToggle } from "@/components/layout/mode-toggle"
 import { UserAvatar } from "@/components/layout/user-avatar"
 import { useMe } from "@/features/auth/api"
@@ -12,6 +12,10 @@ export function SiteHeader() {
   const me = useMe()
   // Only the landing route validates `next`; another page's ?next must not be carried.
   const next = useMatch({ from: "/", shouldThrow: false })?.search.next
+  // Inside a project the link is highlighted too, but it isn't the current page.
+  const inProject = useLocation({
+    select: (location) => location.pathname.startsWith("/app/projects/"),
+  })
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background/80 pt-[env(safe-area-inset-top)] backdrop-blur">
@@ -30,6 +34,9 @@ export function SiteHeader() {
             <>
               <Link
                 to="/app/projects"
+                activeOptions={{ exact: true }}
+                aria-current={inProject ? "location" : undefined}
+                data-status={inProject ? "active" : undefined}
                 className={`flex min-h-11 items-center px-3 text-sm font-semibold hover:bg-hover data-[status=active]:text-primary-text data-[status=active]:underline data-[status=active]:decoration-2 data-[status=active]:underline-offset-4 ${focusRing}`}
               >
                 Projects
