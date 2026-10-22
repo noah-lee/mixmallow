@@ -24,14 +24,22 @@ export function SiteHeader() {
         <div className="flex items-center gap-1">
           <ModeToggle />
           {me.data ? (
-            // 44px hit area around the avatar, for touch.
-            <Link
-              to="/account"
-              aria-label="Account"
-              className={`flex size-11 items-center justify-center ${focusRing}`}
-            >
-              <UserAvatar user={me.data} />
-            </Link>
+            <>
+              <Link
+                to="/app/projects"
+                className={`flex min-h-11 items-center px-3 text-sm font-semibold hover:bg-hover data-[status=active]:text-primary-text ${focusRing}`}
+              >
+                Projects
+              </Link>
+              {/* 44px hit area around the avatar, for touch. */}
+              <Link
+                to="/account"
+                aria-label="Account"
+                className={`flex size-11 items-center justify-center ${focusRing}`}
+              >
+                <UserAvatar user={me.data} />
+              </Link>
+            </>
           ) : (
             !me.isLoading && (
               <SignInButton variant="ghost">Sign in</SignInButton>
