@@ -736,8 +736,8 @@ test('not found', async ({ page, context }) => {
     page.getByRole('heading', { name: "This track doesn't exist" }),
   ).toBeVisible();
   await expect(
-    page.getByRole('link', { name: 'Go to my project' }),
-  ).toHaveAttribute('href', '/app');
+    page.getByRole('link', { name: 'Go to projects' }),
+  ).toHaveAttribute('href', '/app/projects');
   await captureScreenshot(page, 'track-not-found');
 });
 

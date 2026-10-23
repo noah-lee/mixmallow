@@ -246,7 +246,7 @@ test('storage full', async ({ page, context }) => {
   ).toBeDisabled();
   await expect(
     page.getByText(
-      'Free plan: 100 MB used. Delete a version to upload another.',
+      "You've reached the Free plan's 100 MB limit. Delete a version to upload another.",
     ),
   ).toBeVisible();
   await captureScreenshot(page, 'project-storage-full');
@@ -413,7 +413,7 @@ test('not found', async ({ page, context }) => {
   ).toBeVisible();
   await captureScreenshot(page, 'project-not-found');
 
-  await page.getByRole('link', { name: 'Go to my project' }).click();
+  await page.getByRole('link', { name: 'Go to projects' }).click();
   await expect(page).toHaveURL(`${WEB_ORIGIN}/app/start`);
 });
 

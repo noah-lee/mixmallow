@@ -19,7 +19,7 @@ export function UsageMeter({
         "data-high:bg-warning-tint",
       )}
     >
-      <p className="text-caption whitespace-nowrap">
+      <p className="text-caption whitespace-nowrap text-muted-foreground">
         <span className="sr-only">Storage used: </span>
         {formatBytes(usedBytes)} of {formatBytes(limitBytes)}
       </p>

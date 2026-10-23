@@ -96,7 +96,7 @@ function Track({ projectId, trackId }: { projectId: string; trackId: string }) {
     httpStatus(track.error) === 404 ||
     httpStatus(notes.error) === 404 ||
     (track.data !== undefined && track.data.projectId !== projectId)
-  // Otherwise /app may still route "Go to my project" back here from the cached list.
+  // Otherwise the cached projects list may still link back here.
   useEffect(() => {
     if (notFound) {
       void qc.invalidateQueries({ queryKey: PROJECTS_QUERY_KEY, exact: true })
@@ -634,11 +634,12 @@ function TrackNotFound() {
           <h1 className="text-heading-2">This track doesn't exist</h1>
         </EmptyTitle>
         <EmptyDescription>
-          It may have been deleted, or the link is wrong.
+          It may have been deleted, you may no longer have access, or the link
+          is wrong.
         </EmptyDescription>
       </EmptyHeader>
       <Button asChild className="w-full sm:w-auto">
-        <Link to="/app">Go to my project</Link>
+        <Link to="/app/projects">Go to projects</Link>
       </Button>
     </Empty>
   )

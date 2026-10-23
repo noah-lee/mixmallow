@@ -115,7 +115,7 @@ function Project({ projectId }: { projectId: string }) {
     httpStatus(project.error) === 404 ||
     httpStatus(tracks.error) === 404 ||
     httpStatus(members.error) === 404
-  // Otherwise /app may still route "Go to my project" back here from the cached list.
+  // Otherwise the cached projects list may still link back here.
   useEffect(() => {
     if (notFound) {
       void qc.invalidateQueries({ queryKey: PROJECTS_QUERY_KEY, exact: true })
@@ -163,8 +163,9 @@ function Project({ projectId }: { projectId: string }) {
       notice={
         storageFull && usage ? (
           <p className="font-medium text-warning">
-            Free plan: {formatBytes(usage.storageLimitBytes)} used. Delete a
-            version to upload another.
+            You've reached the Free plan's{" "}
+            {formatBytes(usage.storageLimitBytes)} limit. Delete a version to
+            upload another.
           </p>
         ) : undefined
       }
@@ -507,11 +508,12 @@ function ProjectNotFound() {
           <h1 className="text-heading-2">This project doesn't exist</h1>
         </EmptyTitle>
         <EmptyDescription>
-          It may have been deleted, or the link is wrong.
+          It may have been deleted, you may no longer have access, or the link
+          is wrong.
         </EmptyDescription>
       </EmptyHeader>
       <Button asChild className="w-full sm:w-auto">
-        <Link to="/app">Go to my project</Link>
+        <Link to="/app/projects">Go to projects</Link>
       </Button>
     </Empty>
   )
