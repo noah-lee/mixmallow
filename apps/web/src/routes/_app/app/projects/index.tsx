@@ -9,6 +9,7 @@ import { projectsQueryOptions } from "@/features/projects/api"
 import { ProjectRow } from "@/features/projects/project-row"
 import { useUsage } from "@/features/usage/api"
 import { retryUnlessClientError } from "@/lib/api"
+import { plural } from "@/lib/format"
 
 export const Route = createFileRoute("/_app/app/projects/")({
   component: ProjectsPage,
@@ -34,7 +35,7 @@ function ProjectsPage() {
 
   const plan = usage && (
     <p className="text-sm text-muted-foreground">
-      Free plan: {usage.projectCount} of {usage.projectLimit} projects
+      Free plan: {usage.projectCount} of {plural(usage.projectLimit, "project")}
     </p>
   )
 
@@ -102,7 +103,7 @@ function ProjectList({
 
 function NoOwnProject() {
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-dashed p-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-3 rounded-xl border border-dashed border-border-strong p-4 sm:flex-row sm:items-center sm:justify-between">
       <p className="text-sm text-muted-foreground">
         You don't have a project yet
       </p>
