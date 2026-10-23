@@ -156,11 +156,20 @@ async function openTrack(page: Page, projectId: string, trackId: string) {
   await expect(
     page.getByRole('heading', { level: 1, name: /Midnight Drive/ }),
   ).toBeVisible();
-  // The project query lands separately and adds the version chips above the player, so
-  // waiting for it keeps waveform boxes measured afterwards in place.
+  // The project query (back link, Share) and the track list (version chips above the
+  // player) land after the track, so wait for both before measuring the waveform.
   await expect(
     page.getByRole('link', { name: 'Midnight Drive', exact: true }),
   ).toBeVisible();
+  const versions = await app.db
+    .select({ id: tracks.id })
+    .from(tracks)
+    .where(eq(tracks.projectId, projectId));
+  if (versions.length > 1) {
+    await expect(
+      page.getByRole('navigation', { name: 'Versions' }).getByRole('link'),
+    ).toHaveCount(versions.length);
+  }
 }
 
 // Phones open the bottom sheet; desktop has the form inline already.

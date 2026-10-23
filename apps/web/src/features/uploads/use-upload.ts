@@ -35,7 +35,7 @@ export type UploadState =
   // A collaborator's file the owner's storage can't take; retrying can't help.
   | { status: "refused"; prepared: PreparedFile }
 
-// Format names are read as letters: "an MP3", "an AAC", but "a WAV", "a FLAC".
+// The article follows how the first format is spoken: an MP3/AAC/M4A, a WAV/FLAC.
 const VOWEL_SOUND = new Set<AudioFormat>(["mp3", "aac", "m4a"])
 const aFormat = (formats: readonly AudioFormat[]) =>
   `${formats[0] && VOWEL_SOUND.has(formats[0]) ? "an" : "a"} ${formatList(formats)}`
