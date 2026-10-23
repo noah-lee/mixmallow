@@ -132,7 +132,7 @@ export function UploadPanel({
           </Alert>
           <Button
             variant="ghost"
-            className="w-full sm:w-auto sm:self-start"
+            className="w-full sm:-ml-3 sm:w-auto sm:self-start"
             onClick={upload.chooseAnother}
           >
             Choose another
@@ -174,7 +174,7 @@ function FileCard({
 }
 
 // `compact` is the project page's: no illustration, a single line beside the button from
-// `sm`. `notice` replaces the limits line (storage full).
+// `sm`. `notice` replaces the limits line (storage full), and the compact title with it.
 export function Dropzone({
   error,
   maxFileBytes,
@@ -269,9 +269,12 @@ export function Dropzone({
           <>
             {button}
             <div className="flex flex-col gap-0.5 text-center sm:text-left">
-              <p className="hidden font-semibold sm:block">
-                {active ? "Drop it here" : title}
-              </p>
+              {/* Uploads are off while a notice shows, so don't invite a drag. */}
+              {!notice && (
+                <p className="hidden font-semibold sm:block">
+                  {active ? "Drop it here" : title}
+                </p>
+              )}
               {limits}
             </div>
           </>

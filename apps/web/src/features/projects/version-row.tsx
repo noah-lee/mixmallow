@@ -1,5 +1,5 @@
 import type { TrackSummary } from "@repo/shared/schemas"
-import { type QueryClient, useQueryClient } from "@tanstack/react-query"
+import { useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { Ellipsis, Pencil, Trash2 } from "lucide-react"
 import { useRef, useState } from "react"
@@ -19,13 +19,9 @@ import {
   formatShortDate,
   plural,
 } from "@/lib/format"
-import { projectKey, removeTrack, useDeleteTrack, useRenameTrack } from "./api"
+import { removeTrack, useDeleteTrack, useRenameTrack } from "./api"
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog"
 import { RenameDialog, type RenameResult } from "./rename-dialog"
-
-// A 403 means this user's rights changed under the page; reload what it may show.
-const refetchProject = (qc: QueryClient, projectId: string) =>
-  qc.invalidateQueries({ queryKey: projectKey(projectId) })
 
 export function noteSummary(track: TrackSummary): string {
   if (track.noteCount === 0) return "No notes"
@@ -113,7 +109,10 @@ function VersionMenu({
         void removeTrack(qc, track.projectId, track.id)
         return "gone"
       }
-      if (status === 403) void refetchProject(qc, track.projectId)
+      if (status === 403) {
+        toast.error(`You can't rename ${label}.`)
+        return "gone"
+      }
       return status === 400 ? "invalid" : "failed"
     }
   }
@@ -127,7 +126,11 @@ function VersionMenu({
           void removeTrack(qc, track.projectId, track.id)
           return
         }
-        if (httpStatus(err) === 403) void refetchProject(qc, track.projectId)
+        if (httpStatus(err) === 403) {
+          setDeleting(false)
+          toast.error(`You can't delete ${label}.`)
+          return
+        }
         toast.error(`Couldn't delete ${label}. Try again.`)
       },
     })

@@ -263,6 +263,7 @@ test('storage full', async ({ page, context }) => {
       "You've reached the Free plan's 100 MB limit. Delete a version to upload another.",
     ),
   ).toBeVisible();
+  await expect(page.getByText('Drag a new mix here')).toHaveCount(0);
   await captureScreenshot(page, 'project-storage-full');
 });
 
@@ -586,6 +587,40 @@ test('delete a version', async ({ page, context }) => {
   await expect(page.getByText('51.9 MB of 100 MB')).toBeVisible();
 });
 
+test.describe('a version change the server forbids', () => {
+  test.use({
+    expectedConsoleError: /Failed to load resource: .*status of 403/,
+  });
+
+  test('closes the dialog with a toast', async ({ page, context }) => {
+    const { project, tracks } = await seedProject(context);
+    await page.route(`**/api/tracks/${tracks[1]?.id}`, (route) =>
+      route.request().method() === 'GET'
+        ? route.fallback()
+        : route.fulfill({ status: 403, json: { error: 'forbidden' } }),
+    );
+    await openProject(page, project.id);
+
+    await page.getByRole('button', { name: 'More for v2' }).click();
+    await page.getByRole('menuitem', { name: 'Rename' }).click();
+    const rename = page.getByRole('dialog', { name: 'Rename v2' });
+    await rename.getByLabel('Name').fill('Midnight Drive — wider chorus');
+    await rename.getByRole('button', { name: 'Save' }).click();
+    await expect(rename).toBeHidden();
+    await expect(page.getByText("You can't rename v2.")).toBeVisible();
+    await expect(row(page, 'v2')).toContainText('Midnight Drive');
+    await expect(row(page, 'v2')).not.toContainText('wider chorus');
+
+    await page.getByRole('button', { name: 'More for v2' }).click();
+    await page.getByRole('menuitem', { name: 'Delete' }).click();
+    const remove = page.getByRole('alertdialog');
+    await remove.getByRole('button', { name: 'Delete' }).click();
+    await expect(remove).toBeHidden();
+    await expect(page.getByText("You can't delete v2.")).toBeVisible();
+    await expect(rows(page).getByRole('listitem')).toHaveCount(3);
+  });
+});
+
 test('deleting the last version focuses the project title', async ({
   page,
   context,
@@ -674,13 +709,9 @@ test('owner with collaborators', async ({ page, context }) => {
     route.fulfill({ contentType: 'image/svg+xml', body: AVATAR_SVG }),
   );
   const { project, tracks } = await seedProject(context);
-  const people = [];
-  for (const [name, picture] of [
-    ['Sam Rivera', SAM_AVATAR],
-    ['Jo Park', null],
-  ] as const) {
-    const user = await newUser(name, picture);
-    people.push(user);
+  const sam = await newUser('Sam Rivera', SAM_AVATAR);
+  const jo = await newUser('Jo Park');
+  for (const user of [sam, jo]) {
     await createMember(app.db, { projectId: project.id, userId: user.id });
     await createNote(app.db, {
       userId: user.id,
@@ -688,7 +719,7 @@ test('owner with collaborators', async ({ page, context }) => {
       timestampMs: 30_000,
     });
   }
-  await addVersions(people[0]?.id ?? '', project.id, [SAM_MIX]);
+  await addVersions(sam.id, project.id, [SAM_MIX]);
   // A member who left keeps their version, and their name on it.
   const gone = await newUser('Lee Hart');
   await addVersions(gone.id, project.id, [
@@ -811,6 +842,7 @@ test('collaborator, project full', async ({ page, context }) => {
     page.getByText("This project can't accept more uploads."),
   ).toBeVisible();
   await expect(page.getByText(/MB of 100 MB|Free plan/)).toHaveCount(0);
+  await expect(page.getByText('Drag a new mix here')).toHaveCount(0);
   await captureScreenshot(page, 'project-collaborator-full');
 });
 
@@ -858,6 +890,33 @@ test.describe("the owner's storage refuses the file", () => {
     await expect(
       page.getByRole('button', { name: 'Upload a new version' }),
     ).toBeEnabled();
+  });
+
+  test('collaborator, file refused on completion', async ({
+    page,
+    context,
+  }) => {
+    const { project } = await seedShared(context);
+    await page.route(STORAGE, (route) =>
+      route.fulfill({ status: 200, headers: CORS, body: '' }),
+    );
+    // Another member's upload took the space between registering and completing.
+    await page.route('**/api/uploads/*/complete', (route) =>
+      route.fulfill({ status: 403, json: { error: 'storage_limit_reached' } }),
+    );
+    await openProject(page, project.id);
+    await fileInput(page).setInputFiles(MIX);
+    const uploadRow = rows(page).getByRole('region', { name: 'Upload' });
+    await expect(
+      uploadRow.getByText("This project can't accept this file."),
+    ).toBeVisible();
+    await expect(
+      uploadRow.getByRole('button', { name: 'Try again' }),
+    ).toHaveCount(0);
+    await expect(row(page, 'v4')).toHaveCount(0);
+    await expect(
+      uploadRow.getByRole('button', { name: 'Choose another' }),
+    ).toBeVisible();
   });
 });
 

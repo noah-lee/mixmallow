@@ -30,8 +30,8 @@ import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { usePhone } from "@/lib/use-media-query"
 
-// "saved" and "gone" close the dialog (the caller handles what "gone" means); the others
-// keep it open with the input as typed.
+// "saved" and "gone" close the dialog (the caller handles what "gone" means: deleted, or
+// not this user's to change); the others keep it open with the input as typed.
 export type RenameResult = "saved" | "gone" | "invalid" | "failed"
 
 const nameError = (value: string) => {
