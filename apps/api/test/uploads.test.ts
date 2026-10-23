@@ -190,13 +190,21 @@ describe('POST /api/uploads', () => {
     expect(await uploadRows(session.user.id)).toEqual([]);
   });
 
-  it('accepts a file of exactly the free per-file size', async () => {
+  it('uploads a file of exactly the free per-file size', async () => {
     const session = await createTestSession(app);
     const res = await register(session, {
       fileName: 'Mix.mp3',
       sizeBytes: 20 * MB,
     });
     expect(res.statusCode).toBe(201);
+    const { uploadId, uploadUrl } = createUploadResponseSchema.parse(
+      res.json(),
+    );
+    writeStoredObject(app, keyFromUrl(uploadUrl), 20 * MB);
+    const completed = await completeUpload(app, session, uploadId);
+    expect(completed.statusCode).toBe(201);
+    const { track } = completeUploadResponseSchema.parse(completed.json());
+    expect(track.sizeBytes).toBe(20 * MB);
   });
 
   it("404s another user's project", async () => {

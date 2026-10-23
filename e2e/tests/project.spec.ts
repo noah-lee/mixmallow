@@ -729,8 +729,10 @@ test('owner with collaborators', async ({ page, context }) => {
 
   await share.click();
   await expect(
-    page.getByRole('dialog', { name: 'Share project' }),
-  ).toContainText(/2 of 1 collaborators?/);
+    page
+      .getByRole('dialog', { name: 'Share project' })
+      .getByText('2 of 1 collaborator', { exact: true }),
+  ).toBeVisible();
 });
 
 test('owner without collaborators shows a plain Share button', async ({
