@@ -57,7 +57,7 @@ const FEATURES = [
     icon: Lock,
     title: "Private until you invite someone",
     description:
-      "Only the people you invite can hear your mixes and read your notes. No public links, no feeds, no ads.",
+      "Only the people you invite can hear your mixes and read your notes. No public pages, no feeds, no ads.",
     tint: "bg-tint-butter",
   },
 ] as const

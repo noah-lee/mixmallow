@@ -152,14 +152,14 @@ test('at the project limit', async ({ page, context }) => {
   await expect(button).toHaveAccessibleDescription(
     'Free plan: 3 of 3 projects. Delete one to start another.',
   );
-  // Focusable, so the reason is announced on Tab.
-  await button.focus();
-  await expect(button).toBeFocused();
   await expect(newProject(page)).toHaveCount(0);
   await expect(
     page.getByText('Free plan: 3 of 3 projects', { exact: true }),
   ).toHaveCount(0);
   await captureScreenshot(page, 'projects-at-limit');
+  // Focusable, so the reason is announced on Tab.
+  await button.focus();
+  await expect(button).toBeFocused();
 
   await page.goto('/app/start');
   await expect(page).toHaveURL(`${WEB_ORIGIN}/app/projects`);
