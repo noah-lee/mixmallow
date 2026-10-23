@@ -13,7 +13,6 @@ import { projectRole } from './access.ts';
 const notFound = { error: 'not_found' } as const;
 const forbidden = { error: 'forbidden' } as const;
 
-// Registered under /projects, beside projectRoutes.
 export const memberRoutes: FastifyPluginAsyncZod = async (app) => {
   const options = {
     onRequest: [app.authenticate],
