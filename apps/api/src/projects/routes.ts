@@ -88,9 +88,9 @@ export const projectRoutes: FastifyPluginAsyncZod = async (app) => {
         req.user.sub,
         req.params.projectId,
       );
-      if (role === 'collaborator') {
-        reply.code(403);
-        return forbidden;
+      if (role !== 'owner') {
+        reply.code(role ? 403 : 404);
+        return role ? forbidden : notFound;
       }
       const keys = await deleteProject(
         app.db,
