@@ -42,7 +42,7 @@ import { uploadMessages, useUpload } from "@/features/uploads/use-upload"
 import { usageQueryOptions } from "@/features/usage/api"
 import { UsageMeter } from "@/features/usage/usage-meter"
 import { httpStatus } from "@/lib/api"
-import { formatBytes, plural } from "@/lib/format"
+import { plural } from "@/lib/format"
 
 export const Route = createFileRoute("/_app/app/projects/$projectId/")({
   component: ProjectPage,
@@ -72,7 +72,9 @@ function Project({ projectId }: { projectId: string }) {
   })
   const [gone, setGone] = useState(false)
 
-  const maxFileBytes = usage?.maxFileBytes ?? PLANS.free.maxFileBytes
+  // File rules are the owner's plan, for collaborators too.
+  const maxFileBytes =
+    project.data?.ownerLimits.maxFileBytes ?? PLANS.free.maxFileBytes
   // Owner only: a collaborator never sees the owner's storage numbers.
   const spaceLeftBytes = usage
     ? Math.max(0, usage.storageLimitBytes - usage.storageUsedBytes)
@@ -139,8 +141,7 @@ function Project({ projectId }: { projectId: string }) {
   } else if (storageFull && usage) {
     storageNotice = (
       <p className="font-medium text-warning">
-        You've reached the Free plan's {formatBytes(usage.storageLimitBytes)}{" "}
-        limit. Delete a version to upload another.
+        {uploadMessages.storageFull(usage.storageLimitBytes)}
       </p>
     )
   }

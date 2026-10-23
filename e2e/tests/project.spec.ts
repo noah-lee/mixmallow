@@ -10,7 +10,7 @@ import {
   createTrack,
   createUser,
 } from '../../apps/api/test/helpers/factories.ts';
-import { wav } from '../support/audio.ts';
+import { mp3, wav } from '../support/audio.ts';
 import { STORAGE_ORIGIN, WEB_ORIGIN } from '../support/env.ts';
 import { captureScreenshot, expect, test } from '../support/fixtures.ts';
 import { signedInUser } from '../support/session.ts';
@@ -22,10 +22,14 @@ const STORAGE = `${STORAGE_ORIGIN}/**`;
 const CORS = { 'Access-Control-Allow-Origin': '*' };
 
 const MIX = {
-  name: 'Midnight Drive — final.wav',
-  mimeType: 'audio/wav',
-  buffer: wav(),
+  name: 'Midnight Drive — final.mp3',
+  mimeType: 'audio/mpeg',
+  buffer: mp3(),
 };
+
+const LIMITS_LINE = 'MP3, AAC or M4A · up to 20 MB per file';
+const FORMAT_MESSAGE =
+  'Upload an MP3, AAC or M4A file. Export your mix as a 320 kbps MP3 to upload it.';
 
 type Version = {
   name: string;
@@ -191,6 +195,22 @@ const fileInput = (page: Page) => page.locator('input[type="file"]');
 const backLink = (page: Page) =>
   page.getByRole('link', { name: 'Back to projects' });
 
+// Sparse, so it costs no disk; the size checks run before anything reads it.
+function sparseFile(path: string, sizeBytes: number) {
+  const fd = openSync(path, 'w');
+  ftruncateSync(fd, sizeBytes);
+  closeSync(fd);
+  return path;
+}
+
+function watchRegistration(page: Page) {
+  const seen = { registered: false };
+  page.on('request', (req) => {
+    if (req.url().endsWith('/api/uploads')) seen.registered = true;
+  });
+  return seen;
+}
+
 async function openProject(page: Page, id: string) {
   await page.goto(projectUrl(id));
   await expect(
@@ -212,7 +232,8 @@ test('loading', async ({ page, context }) => {
 test('default', async ({ page, context }) => {
   const { project } = await seedProject(context);
   await openProject(page, project.id);
-  await expect(page.getByText('61.6 MB of 100 MB')).toBeVisible();
+  await expect(page.getByText('61.6 MB of 500 MB')).toBeVisible();
+  await expect(page.getByText(LIMITS_LINE)).toBeVisible();
   const items = rows(page).getByRole('listitem');
   await expect(items).toHaveCount(3);
   await expect(items.nth(0)).toContainText('v3');
@@ -251,16 +272,16 @@ test('opening a version goes to its track page', async ({ page, context }) => {
 
 test('storage full', async ({ page, context }) => {
   const { project } = await seedProject(context, [
-    { ...SAMPLE[0], sizeBytes: Math.round(99.5 * MB) } as Version,
+    { ...SAMPLE[0], sizeBytes: Math.round(499.5 * MB) } as Version,
   ]);
   await openProject(page, project.id);
-  await expect(page.getByText('99.5 MB of 100 MB')).toBeVisible();
+  await expect(page.getByText('499.5 MB of 500 MB')).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Upload a new version' }),
   ).toBeDisabled();
   await expect(
     page.getByText(
-      "You've reached the Free plan's 100 MB limit. Delete a version to upload another.",
+      'Free plan: 500 MB used. Delete a version to upload another.',
     ),
   ).toBeVisible();
   await expect(page.getByText('Drag a new mix here')).toHaveCount(0);
@@ -272,25 +293,93 @@ test('a file bigger than the space left is refused before uploading', async ({
   context,
 }, testInfo) => {
   const { project } = await seedProject(context, [
-    { ...SAMPLE[0], sizeBytes: 70 * MB } as Version,
+    { ...SAMPLE[0], sizeBytes: 490 * MB } as Version,
   ]);
-  // Sparse, so it costs no disk; the size check runs before anything reads it.
-  const big = testInfo.outputPath('Big mix.wav');
-  const fd = openSync(big, 'w');
-  ftruncateSync(fd, 40 * MB);
-  closeSync(fd);
+  const big = sparseFile(testInfo.outputPath('Big mix.mp3'), 15 * MB);
 
-  let registered = false;
-  page.on('request', (req) => {
-    if (req.url().endsWith('/api/uploads')) registered = true;
-  });
+  const seen = watchRegistration(page);
   await openProject(page, project.id);
   await fileInput(page).setInputFiles(big);
   await expect(page.getByRole('alert')).toHaveText(
-    'Not enough space: 30 MB left. Delete a version to free some up.',
+    'Not enough space: 10 MB left. Delete a version to free some up.',
   );
-  expect(registered).toBe(false);
+  expect(seen.registered).toBe(false);
   await captureScreenshot(page, 'project-not-enough-space');
+});
+
+test('a WAV file is refused before uploading', async ({ page, context }) => {
+  const { project } = await seedProject(context);
+  const seen = watchRegistration(page);
+  await openProject(page, project.id);
+  await expect(fileInput(page)).toHaveAttribute('accept', '.mp3,.aac,.m4a');
+  await fileInput(page).setInputFiles({
+    name: 'Midnight Drive — final.wav',
+    mimeType: 'audio/wav',
+    buffer: wav(),
+  });
+  await expect(page.getByRole('alert')).toHaveText(FORMAT_MESSAGE);
+  await expect(
+    page.getByRole('button', { name: 'Upload a new version' }),
+  ).toBeEnabled();
+  expect(seen.registered).toBe(false);
+  await captureScreenshot(page, 'project-format-refused');
+
+  await fileInput(page).setInputFiles({
+    name: 'notes.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('mix notes'),
+  });
+  await expect(page.getByRole('alert')).toHaveText(
+    'Use an MP3, AAC or M4A file',
+  );
+  expect(seen.registered).toBe(false);
+});
+
+test('a file over 20 MB is refused before uploading', async ({
+  page,
+  context,
+}, testInfo) => {
+  const { project } = await seedProject(context);
+  const big = sparseFile(testInfo.outputPath('Big mix.mp3'), 25 * MB);
+  const seen = watchRegistration(page);
+  await openProject(page, project.id);
+  await fileInput(page).setInputFiles(big);
+  await expect(page.getByRole('alert')).toHaveText('Files can be up to 20 MB');
+  expect(seen.registered).toBe(false);
+  await captureScreenshot(page, 'project-file-too-large');
+});
+
+test.describe('the server refuses the file for the plan', () => {
+  test.use({
+    expectedConsoleError: /Failed to load resource: .*status of 403/,
+  });
+
+  for (const [code, message] of [
+    ['file_too_large', 'Files can be up to 20 MB'],
+    ['format_not_allowed', FORMAT_MESSAGE],
+  ] as const) {
+    test(`${code} shows the file message`, async ({ page, context }) => {
+      const { project } = await seedProject(context);
+      let puts = 0;
+      await page.route(STORAGE, (route) => {
+        puts++;
+        return route.fulfill({ status: 200, headers: CORS, body: '' });
+      });
+      await page.route('**/api/uploads', (route) =>
+        route.request().method() === 'POST'
+          ? route.fulfill({ status: 403, json: { error: code } })
+          : route.fallback(),
+      );
+      await openProject(page, project.id);
+      await fileInput(page).setInputFiles(MIX);
+      await expect(page.getByRole('alert')).toHaveText(message);
+      await expect(
+        page.getByRole('button', { name: 'Upload a new version' }),
+      ).toBeEnabled();
+      await expect(rows(page).getByRole('listitem')).toHaveCount(3);
+      expect(puts).toBe(0);
+    });
+  }
 });
 
 test('uploading, then cancel', async ({ page, context }) => {
@@ -383,7 +472,7 @@ test('uploading a new version opens it', async ({ page, context }) => {
           projectId: project.id,
           version: 4,
           name: 'Midnight Drive — final',
-          format: 'wav',
+          format: 'mp3',
           sizeBytes: MIX.buffer.length,
           durationMs: 2000,
           createdAt: now,
@@ -632,7 +721,7 @@ test('owner with collaborators', async ({ page, context }) => {
   await expect(share).toBeVisible();
   await expect(share.locator('[data-slot="avatar"]')).toHaveCount(2);
   await expect(share.getByText('JP')).toBeVisible();
-  await expect(page.getByText('72.7 MB of 100 MB')).toBeVisible();
+  await expect(page.getByText('72.7 MB of 500 MB')).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Project options' }),
   ).toBeVisible();
@@ -641,7 +730,7 @@ test('owner with collaborators', async ({ page, context }) => {
   await share.click();
   await expect(
     page.getByRole('dialog', { name: 'Share project' }),
-  ).toContainText('2 of 10 collaborators');
+  ).toContainText(/2 of 1 collaborators?/);
 });
 
 test('owner without collaborators shows a plain Share button', async ({
@@ -686,10 +775,8 @@ test('collaborator', async ({ page, context }) => {
   await expect(
     page.getByRole('button', { name: 'Upload a new version' }),
   ).toBeEnabled();
-  await expect(
-    page.getByText('WAV, MP3, FLAC or AAC · up to 100 MB per file'),
-  ).toBeVisible();
-  await expect(page.getByText(/of 100 MB/)).toHaveCount(0);
+  await expect(page.getByText(LIMITS_LINE)).toBeVisible();
+  await expect(page.getByText(/of 500 MB/)).toHaveCount(0);
   await expect(page.getByRole('progressbar')).toHaveCount(0);
   await expect(
     page.getByRole('button', { name: 'Project options' }),
@@ -717,14 +804,37 @@ test('collaborator, no versions', async ({ page, context }) => {
   await expect(
     page.getByRole('button', { name: 'Upload a version' }),
   ).toBeEnabled();
-  await expect(page.getByText(/of 100 MB/)).toHaveCount(0);
+  await expect(page.getByText(/of 500 MB/)).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Versions' })).toBeHidden();
   await captureScreenshot(page, 'project-collaborator-no-versions');
 });
 
+test("collaborator, a file outside the owner's plan is refused", async ({
+  page,
+  context,
+}, testInfo) => {
+  const { project } = await seedShared(context);
+  const seen = watchRegistration(page);
+  await openProject(page, project.id);
+  await fileInput(page).setInputFiles({
+    name: 'Midnight Drive — Sam mix.flac',
+    mimeType: 'audio/flac',
+    buffer: Buffer.from('fLaC'),
+  });
+  await expect(page.getByRole('alert')).toHaveText(FORMAT_MESSAGE);
+  await expect(page.getByText(/MB left|Free plan/)).toHaveCount(0);
+  await captureScreenshot(page, 'project-collaborator-format-refused');
+
+  await fileInput(page).setInputFiles(
+    sparseFile(testInfo.outputPath('Sam mix.mp3'), 25 * MB),
+  );
+  await expect(page.getByRole('alert')).toHaveText('Files can be up to 20 MB');
+  expect(seen.registered).toBe(false);
+});
+
 test('collaborator, project full', async ({ page, context }) => {
   const { project } = await seedShared(context, [
-    { ...SAMPLE[0], sizeBytes: Math.round(99.5 * MB) } as Version,
+    { ...SAMPLE[0], sizeBytes: Math.round(499.5 * MB) } as Version,
   ]);
   await openProject(page, project.id);
   await expect(
@@ -733,7 +843,7 @@ test('collaborator, project full', async ({ page, context }) => {
   await expect(
     page.getByText("This project can't accept more uploads."),
   ).toBeVisible();
-  await expect(page.getByText(/MB of 100 MB|Free plan/)).toHaveCount(0);
+  await expect(page.getByText(/MB of 500 MB|Free plan/)).toHaveCount(0);
   await expect(page.getByText('Drag a new mix here')).toHaveCount(0);
   await captureScreenshot(page, 'project-collaborator-full');
 });
@@ -744,9 +854,9 @@ test.describe("the owner's storage refuses the file", () => {
   });
 
   test('collaborator, file too big', async ({ page, context }) => {
-    // 5 MB left of Maya's storage; the file is about 7.6 MB.
+    // 1 MB left of Maya's storage; the file is about 1.6 MB.
     const { project } = await seedShared(context, [
-      { ...SAMPLE[0], sizeBytes: 95 * MB } as Version,
+      { ...SAMPLE[0], sizeBytes: 499 * MB } as Version,
     ]);
     let puts = 0;
     await page.route(STORAGE, (route) => {
@@ -759,7 +869,11 @@ test.describe("the owner's storage refuses the file", () => {
         new URL(res.url()).pathname === '/api/uploads',
     );
     await openProject(page, project.id);
-    const big = { ...MIX, name: 'Midnight Drive — long.wav', buffer: wav(500) };
+    const big = {
+      ...MIX,
+      name: 'Midnight Drive — long.mp3',
+      buffer: Buffer.concat(Array.from({ length: 100 }, () => MIX.buffer)),
+    };
     await fileInput(page).setInputFiles(big);
     const res = await refused;
     expect(res.status()).toBe(403);
@@ -864,7 +978,7 @@ test('collaborator uploads a version', async ({ page, context }) => {
           projectId: project.id,
           version: 4,
           name: 'Midnight Drive — final',
-          format: 'wav',
+          format: 'mp3',
           sizeBytes: MIX.buffer.length,
           durationMs: 2000,
           createdAt: now,

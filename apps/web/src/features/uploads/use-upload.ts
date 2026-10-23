@@ -50,6 +50,8 @@ export const uploadMessages = {
     leftBytes === undefined
       ? "Not enough space. Delete a version to free some up."
       : `Not enough space: ${formatBytes(leftBytes)} left. Delete a version to free some up.`,
+  storageFull: (limitBytes: number) =>
+    `Free plan: ${formatBytes(limitBytes)} used. Delete a version to upload another.`,
   projectFull: "This project can't accept more uploads.",
   refused: "This project can't accept this file.",
 }
