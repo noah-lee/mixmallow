@@ -12,9 +12,9 @@ import {
   STORAGE_LIMIT_BYTES,
   uploadIdParamsSchema,
 } from '@repo/shared/schemas';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
-import { projectRole } from '../projects/access.ts';
+import { lockMembership, projectRole } from '../projects/access.ts';
 import { storageKey } from '../storage/driver.ts';
 import { findTrackDetail } from '../tracks/queries.ts';
 import { enqueueTranscode, needsPreview } from '../transcode/queue.ts';
@@ -22,22 +22,37 @@ import { usageFor } from '../usage/queries.ts';
 
 const notFound = { error: 'not_found' } as const;
 
-// Serialises every limit check for one user: whoever holds this row lock sees the other
-// requests' committed writes.
-async function lockUser(tx: Transaction, userId: string): Promise<void> {
+// Locks the uploader (one pending upload each) and the project owner (whose storage the
+// version counts against), so whoever holds them sees the other requests' committed writes.
+// One query in id order: Maya uploading to Sam's project while Sam uploads to hers can't
+// deadlock.
+async function lockUsers(tx: Transaction, userIds: string[]): Promise<void> {
   await tx
     .select({ id: users.id })
     .from(users)
-    .where(eq(users.id, userId))
+    .where(inArray(users.id, [...new Set(userIds)]))
+    .orderBy(asc(users.id))
     .for('update');
 }
 
+async function projectOwner(
+  tx: Transaction,
+  projectId: string,
+): Promise<string | null> {
+  const [project] = await tx
+    .select({ ownerId: projects.userId })
+    .from(projects)
+    .where(eq(projects.id, projectId));
+  return project?.ownerId ?? null;
+}
+
+// `ownerId` owns the target project; for a first upload, the uploader.
 async function limitError(
   tx: Transaction,
-  userId: string,
+  ownerId: string,
   upload: { projectId: string | null; sizeBytes: number },
 ): Promise<'project_limit_reached' | 'storage_limit_reached' | null> {
-  const usage = await usageFor(tx, userId);
+  const usage = await usageFor(tx, ownerId);
   if (upload.projectId === null && usage.projectCount >= PROJECT_LIMIT) {
     return 'project_limit_reached';
   }
@@ -69,15 +84,20 @@ export const uploadRoutes: FastifyPluginAsyncZod = async (app) => {
       });
 
       const result = await app.db.transaction(async (tx) => {
-        await lockUser(tx, userId);
+        let ownerId = userId;
         if (projectId) {
-          const role = await projectRole(tx, userId, projectId);
-          if (!role) return { error: 'not_found', status: 404 } as const;
-          if (role !== 'owner') {
-            return { error: 'forbidden', status: 403 } as const;
-          }
+          const owner = (await projectRole(tx, userId, projectId))
+            ? await projectOwner(tx, projectId)
+            : null;
+          if (!owner) return { error: 'not_found', status: 404 } as const;
+          ownerId = owner;
         }
-        const limit = await limitError(tx, userId, { projectId, sizeBytes });
+        await lockUsers(tx, [userId, ownerId]);
+        // Re-resolved under the lock: a removal or deletion meanwhile wins.
+        if (projectId && !(await projectRole(tx, userId, projectId))) {
+          return { error: 'not_found', status: 404 } as const;
+        }
+        const limit = await limitError(tx, ownerId, { projectId, sizeBytes });
         if (limit) return { error: limit, status: 403 } as const;
 
         const replaced = await tx
@@ -153,25 +173,49 @@ export const uploadRoutes: FastifyPluginAsyncZod = async (app) => {
       }
 
       const result = await app.db.transaction(async (tx) => {
-        await lockUser(tx, userId);
+        // A deleted project took the upload with it (cascade), so the re-read below 404s.
+        const ownerId = pending.projectId
+          ? ((await projectOwner(tx, pending.projectId)) ?? userId)
+          : userId;
+        await lockUsers(tx, [userId, ownerId]);
         // Re-read under the lock: a concurrent complete, cancel or replacement wins.
         const [upload] = await tx
           .select()
           .from(uploads)
           .where(and(eq(uploads.id, uploadId), eq(uploads.userId, userId)));
-        if (!upload) return { error: 'not_found', status: 404 } as const;
-
-        const limit = await limitError(tx, userId, upload);
-        if (limit) {
+        if (!upload) {
+          return { error: 'not_found', status: 404, orphanKey: null } as const;
+        }
+        const discard = async <E extends string, S extends number>(
+          error: E,
+          status: S,
+        ) => {
           await tx
             .delete(uploads)
             .where(and(eq(uploads.id, upload.id), eq(uploads.userId, userId)));
-          return {
-            error: limit,
-            status: 403,
-            orphanKey: upload.storageKey,
-          } as const;
+          return { error, status, orphanKey: upload.storageKey } as const;
+        };
+
+        if (upload.projectId) {
+          // Project row before membership, the order project deletion locks them in; the
+          // version counter below updates this row anyway.
+          await tx
+            .select({ id: projects.id })
+            .from(projects)
+            .where(eq(projects.id, upload.projectId))
+            .for('no key update');
+          const role = await projectRole(tx, userId, upload.projectId);
+          if (
+            !role ||
+            (role === 'collaborator' &&
+              !(await lockMembership(tx, upload.projectId, userId)))
+          ) {
+            return discard('not_found', 404);
+          }
         }
+
+        const limit = await limitError(tx, ownerId, upload);
+        if (limit) return discard(limit, 403);
 
         let projectId = upload.projectId;
         if (projectId === null) {
@@ -186,7 +230,7 @@ export const uploadRoutes: FastifyPluginAsyncZod = async (app) => {
         const [counter] = await tx
           .update(projects)
           .set({ nextVersion: sql`${projects.nextVersion} + 1` })
-          .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
+          .where(eq(projects.id, projectId))
           .returning({ version: sql<number>`${projects.nextVersion} - 1` });
         if (!counter) throw new Error('upload project vanished under lock');
 

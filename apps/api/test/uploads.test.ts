@@ -11,6 +11,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp } from './helpers/app.ts';
 import {
+  createMember,
   createProject,
   createTrack,
   createUpload,
@@ -50,9 +51,13 @@ function register(session: TestSession, payload: Record<string, unknown>) {
   });
 }
 
-async function registered(session: TestSession, projectId?: string) {
+async function registered(
+  session: TestSession,
+  projectId?: string,
+  bytes = audio,
+) {
   const res = await registerUpload(app, session, {
-    bytes: audio,
+    bytes,
     ...(projectId && { projectId }),
   });
   expect(res.statusCode).toBe(201);
@@ -462,16 +467,262 @@ describe('DELETE /api/uploads/:uploadId', () => {
 });
 
 describe('uploads by a collaborator', () => {
-  it('forbids uploading a version into a joined project', async () => {
+  // A fresh app, so this block gets its own per-IP rate-limit budget.
+  beforeAll(async () => {
+    await app.close();
+    app = await createTestApp();
+  });
+
+  const usageOf = async (session: TestSession) =>
+    (
+      await app.inject({
+        method: 'GET',
+        url: '/api/usage',
+        cookies: session.cookies,
+      })
+    ).json().storageUsedBytes;
+
+  // Leaves the owner `left` bytes of storage on top of shareProject's three 1 MB versions.
+  async function fillOwner(
+    shared: Awaited<ReturnType<typeof shareProject>>,
+    left: number,
+  ) {
+    await createTrack(app.db, {
+      userId: shared.owner.user.id,
+      projectId: shared.project.id,
+      sizeBytes: STORAGE_LIMIT_BYTES - 3 * MB - left,
+    });
+  }
+
+  async function joinAs(name: string, projectId: string) {
+    const session = await createTestSession(app, { name });
+    await createMember(app.db, { projectId, userId: session.user.id });
+    return session;
+  }
+
+  it('registers and completes a version into a joined project, credited to the uploader', async () => {
+    const { owner, collaborator, project } = await shareProject(app);
+    const result = await uploadTrack(app, collaborator, {
+      bytes: audio,
+      projectId: project.id,
+    });
+    const sam = {
+      id: collaborator.user.id,
+      name: 'Sam',
+      picture: 'https://example.com/sam.png',
+    };
+    expect(result.projectId).toBe(project.id);
+    expect(result.track).toMatchObject({ version: 4, uploader: sam });
+    expect(await trackRows(collaborator.user.id)).toHaveLength(1);
+
+    for (const session of [owner, collaborator]) {
+      const list = await app.inject({
+        method: 'GET',
+        url: `/api/projects/${project.id}/tracks`,
+        cookies: session.cookies,
+      });
+      expect(list.json().items[0]).toMatchObject({
+        id: result.track.id,
+        version: 4,
+        uploader: sam,
+      });
+      const detail = await app.inject({
+        method: 'GET',
+        url: `/api/tracks/${result.track.id}`,
+        cookies: session.cookies,
+      });
+      expect(detail.json()).toMatchObject({ version: 4, uploader: sam });
+    }
+  });
+
+  it("counts the version toward the owner's storage, not the uploader's", async () => {
+    const { owner, collaborator, project } = await shareProject(app);
+    await createTrack(app.db, {
+      userId: owner.user.id,
+      projectId: project.id,
+      sizeBytes: 59 * MB,
+    });
+    await storedTrack(collaborator, 10 * MB);
+    expect(await usageOf(owner)).toBe(62 * MB);
+
+    await uploadTrack(app, collaborator, {
+      bytes: Buffer.alloc(9 * MB),
+      projectId: project.id,
+    });
+    expect(await usageOf(owner)).toBe(71 * MB);
+    expect(await usageOf(collaborator)).toBe(10 * MB);
+  });
+
+  it("refuses to register a file bigger than the owner's space left", async () => {
+    const shared = await shareProject(app);
+    await fillOwner(shared, 5 * MB);
+    const res = await register(shared.collaborator, {
+      projectId: shared.project.id,
+      fileName: 'a.wav',
+      sizeBytes: 6 * MB,
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toEqual({ error: 'storage_limit_reached' });
+    expect(await uploadRows(shared.collaborator.user.id)).toEqual([]);
+  });
+
+  it("ignores the uploader's own full storage when uploading to a joined project", async () => {
     const { collaborator, project } = await shareProject(app);
-    const res = await register(collaborator, {
+    await storedTrack(collaborator, STORAGE_LIMIT_BYTES);
+    const res = await registerUpload(app, collaborator, {
+      bytes: audio,
+      projectId: project.id,
+    });
+    expect(res.statusCode).toBe(201);
+  });
+
+  it('lets only the first of two uploads that together overfill the owner complete', async () => {
+    const shared = await shareProject(app);
+    await fillOwner(shared, 10 * MB);
+    const jo = await joinAs('Jo', shared.project.id);
+    const bytes = Buffer.alloc(6 * MB);
+    const first = await registered(
+      shared.collaborator,
+      shared.project.id,
+      bytes,
+    );
+    const second = await registered(jo, shared.project.id, bytes);
+    putUpload(app, first, bytes);
+    putUpload(app, second, bytes);
+
+    const done = await completeUpload(app, shared.collaborator, first.uploadId);
+    expect(done.statusCode).toBe(201);
+    const refused = await completeUpload(app, jo, second.uploadId);
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json()).toEqual({ error: 'storage_limit_reached' });
+    expect(await app.storage.headSize(keyFromUrl(second.uploadUrl))).toBeNull();
+    expect(await uploadRows(jo.user.id)).toEqual([]);
+    expect(await trackRows(jo.user.id)).toEqual([]);
+    expect(await usageOf(shared.owner)).toBeLessThanOrEqual(
+      STORAGE_LIMIT_BYTES,
+    );
+  });
+
+  it('completes only one of two overfilling uploads sent at once', async () => {
+    const shared = await shareProject(app);
+    await fillOwner(shared, 10 * MB);
+    const jo = await joinAs('Jo', shared.project.id);
+    const bytes = Buffer.alloc(6 * MB);
+    const first = await registered(
+      shared.collaborator,
+      shared.project.id,
+      bytes,
+    );
+    const second = await registered(jo, shared.project.id, bytes);
+    putUpload(app, first, bytes);
+    putUpload(app, second, bytes);
+
+    const results = await Promise.all([
+      completeUpload(app, shared.collaborator, first.uploadId),
+      completeUpload(app, jo, second.uploadId),
+    ]);
+    expect(results.map((r) => r.statusCode).sort()).toEqual([201, 403]);
+    expect(await usageOf(shared.owner)).toBe(STORAGE_LIMIT_BYTES - 4 * MB);
+  });
+
+  it('completes uploads crossing between two owners at once', async () => {
+    const { owner, collaborator, project } = await shareProject(app);
+    const samsProject = await storedTrack(collaborator, MB);
+    await createMember(app.db, {
+      projectId: samsProject.id,
+      userId: owner.user.id,
+    });
+    const intoMaya = await registered(collaborator, project.id);
+    const intoSam = await registered(owner, samsProject.id);
+    putUpload(app, intoMaya, audio);
+    putUpload(app, intoSam, audio);
+
+    const results = await Promise.all([
+      completeUpload(app, collaborator, intoMaya.uploadId),
+      completeUpload(app, owner, intoSam.uploadId),
+    ]);
+    expect(results.map((r) => r.statusCode)).toEqual([201, 201]);
+  });
+
+  it('404s completion after the uploader was removed, discarding the upload and file', async () => {
+    const { owner, collaborator, project } = await shareProject(app);
+    const upload = await registered(collaborator, project.id);
+    putUpload(app, upload, audio);
+    const removed = await app.inject({
+      method: 'DELETE',
+      url: `/api/projects/${project.id}/members/${collaborator.user.id}`,
+      cookies: owner.cookies,
+    });
+    expect(removed.statusCode).toBe(204);
+
+    const res = await completeUpload(app, collaborator, upload.uploadId);
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toEqual({ error: 'not_found' });
+    expect(await trackRows(collaborator.user.id)).toEqual([]);
+    expect(await uploadRows(collaborator.user.id)).toEqual([]);
+    expect(await app.storage.headSize(keyFromUrl(upload.uploadUrl))).toBeNull();
+  });
+
+  it('404s completion after the project was deleted', async () => {
+    const { owner, collaborator, project } = await shareProject(app);
+    const upload = await registered(collaborator, project.id);
+    putUpload(app, upload, audio);
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: `/api/projects/${project.id}`,
+      cookies: owner.cookies,
+    });
+    expect(deleted.statusCode).toBe(204);
+
+    const res = await completeUpload(app, collaborator, upload.uploadId);
+    expect(res.statusCode).toBe(404);
+    expect(await trackRows(collaborator.user.id)).toEqual([]);
+  });
+
+  it("404s an outsider's registration and their completion of a member's upload", async () => {
+    const { collaborator, outsider, project } = await shareProject(app);
+    const res = await register(outsider, {
       projectId: project.id,
       fileName: 'a.wav',
       sizeBytes: 10,
     });
-    expect(res.statusCode).toBe(403);
-    expect(res.json()).toEqual({ error: 'forbidden' });
-    expect(await uploadRows(collaborator.user.id)).toEqual([]);
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toEqual({ error: 'not_found' });
+    expect(await uploadRows(outsider.user.id)).toEqual([]);
+
+    const upload = await registered(collaborator, project.id);
+    putUpload(app, upload, audio);
+    const completed = await completeUpload(app, outsider, upload.uploadId);
+    expect(completed.statusCode).toBe(404);
+    expect(await uploadRows(collaborator.user.id)).toHaveLength(1);
+    expect(await trackRows(outsider.user.id)).toEqual([]);
+  });
+
+  it('rejects a project id that is not a uuid', async () => {
+    const { collaborator } = await shareProject(app);
+    const res = await register(collaborator, {
+      projectId: 'nope',
+      fileName: 'a.wav',
+      sizeBytes: 10,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: 'validation_failed' });
+  });
+
+  it("replaces a pending upload to the member's own project with one into a joined project", async () => {
+    const { collaborator, project } = await shareProject(app);
+    const own = await createProject(app.db, { userId: collaborator.user.id });
+    const first = await registered(collaborator, own.id);
+    putUpload(app, first, audio);
+
+    const second = await registered(collaborator, project.id);
+    const rows = await uploadRows(collaborator.user.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      id: second.uploadId,
+      projectId: project.id,
+    });
+    expect(await app.storage.headSize(keyFromUrl(first.uploadUrl))).toBeNull();
   });
 
   it("creates the collaborator's own project from a first upload and leaves the owner's usage", async () => {

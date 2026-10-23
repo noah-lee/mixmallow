@@ -43,6 +43,26 @@ export async function projectRole(
   return row ? roleOf(row, userId) : null;
 }
 
+// Share lock on a collaborator's membership: a concurrent removal waits for the caller's
+// write, or the caller sees the removal (false).
+export async function lockMembership(
+  tx: Database | Transaction,
+  projectId: string,
+  userId: string,
+): Promise<boolean> {
+  const [member] = await tx
+    .select({ userId: projectMembers.userId })
+    .from(projectMembers)
+    .where(
+      and(
+        eq(projectMembers.projectId, projectId),
+        eq(projectMembers.userId, userId),
+      ),
+    )
+    .for('share');
+  return member !== undefined;
+}
+
 export type TrackAccess = {
   role: ProjectRole;
   projectId: string;
@@ -80,9 +100,8 @@ export type NoteAccess = {
   durationMs: number;
 };
 
-// `lock` takes the note row lock and, for a collaborator, a share lock on their membership,
-// so a removal waits for the write or the write sees the removal (Postgres can't lock the
-// nullable side of the outer join, hence the second query).
+// `lock` takes the note row lock and, for a collaborator, a share lock on their membership
+// (Postgres can't lock the nullable side of the outer join, hence the second query).
 export async function noteAccess(
   db: Database | Transaction,
   userId: string,
@@ -106,18 +125,12 @@ export async function noteAccess(
     : await query;
   const role = row ? roleOf(row, userId) : null;
   if (!row || !role) return null;
-  if (options.lock && role === 'collaborator') {
-    const [member] = await db
-      .select({ userId: projectMembers.userId })
-      .from(projectMembers)
-      .where(
-        and(
-          eq(projectMembers.projectId, row.projectId),
-          eq(projectMembers.userId, userId),
-        ),
-      )
-      .for('share');
-    if (!member) return null;
+  if (
+    options.lock &&
+    role === 'collaborator' &&
+    !(await lockMembership(db, row.projectId, userId))
+  ) {
+    return null;
   }
   return { role, authorId: row.authorId, durationMs: row.durationMs };
 }

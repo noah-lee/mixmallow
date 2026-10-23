@@ -1,4 +1,4 @@
-import { notes, projectMembers, projects, tracks } from '@repo/db';
+import { notes, projectMembers, projects, tracks, uploads } from '@repo/db';
 import { MB, NAME_MAX, STORAGE_LIMIT_BYTES } from '@repo/shared/schemas';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
@@ -234,6 +234,31 @@ describe('DELETE /api/projects/:projectId', () => {
       cookies: session.cookies,
     });
     expect(list.json()).toEqual({ items: [], shared: [] });
+  });
+
+  it("deletes a collaborator's versions and pending upload with the project", async () => {
+    const { owner, collaborator, project } = await shareProject(app);
+    const track = await createTrack(app.db, {
+      userId: collaborator.user.id,
+      projectId: project.id,
+    });
+    const upload = await createUpload(app.db, {
+      userId: collaborator.user.id,
+      projectId: project.id,
+    });
+    writeStoredObject(app, track.storageKey, 10);
+    writeStoredObject(app, upload.storageKey, 10);
+
+    const res = await remove(project.id, owner.cookies);
+    expect(res.statusCode).toBe(204);
+    expect(
+      await app.db.select().from(tracks).where(eq(tracks.id, track.id)),
+    ).toEqual([]);
+    expect(
+      await app.db.select().from(uploads).where(eq(uploads.id, upload.id)),
+    ).toEqual([]);
+    expect(await app.storage.headSize(track.storageKey)).toBeNull();
+    expect(await app.storage.headSize(upload.storageKey)).toBeNull();
   });
 
   it("deletes every track's original and preview objects", async () => {
