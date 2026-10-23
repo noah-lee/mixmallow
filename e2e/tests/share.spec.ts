@@ -58,11 +58,12 @@ async function signIn(context: BrowserContext, name: string) {
   return user;
 }
 
-// Maya Chen (signed in) owns "Midnight Drive"; Sam and Jo joined on Oct 20 and 21.
+// Maya Chen (signed in) owns "Midnight Drive"; Sam joined on Oct 20. More collaborators
+// than the free plan allows stand for a project from before the limit.
 async function seedOwner(
   context: BrowserContext,
   {
-    collaborators = 2,
+    collaborators = 1,
     link = false,
   }: { collaborators?: number; link?: boolean } = {},
 ) {
@@ -114,6 +115,11 @@ async function openSheet(page: Page, projectId: string, button = 'Share') {
 const memberRow = (sheet: ReturnType<Page['getByRole']>, name: string) =>
   sheet.getByRole('listitem').filter({ hasText: name });
 
+const countLine = (sheet: ReturnType<Page['getByRole']>) =>
+  sheet.getByText(/^\d+ of \d+ collaborators?$/);
+
+const FULL_COPY = "New people can't join until you remove someone.";
+
 test('loading', async ({ page, context }) => {
   const { project } = await seedOwner(context);
   await page.route('**/api/projects/*/members', () => {});
@@ -137,7 +143,9 @@ test('no link, no collaborators yet', async ({ page, context }) => {
   await expect(
     sheet.getByRole('button', { name: 'Create invite link' }),
   ).toBeVisible();
-  await expect(sheet).toContainText('0 of 10 collaborators');
+  await expect(countLine(sheet)).toHaveText('0 of 1 collaborator');
+  await expect(countLine(sheet)).not.toHaveClass(/text-warning/);
+  await expect(sheet).not.toContainText(FULL_COPY);
   await expect(sheet).toContainText(
     'No one has joined yet. Share the link to invite someone.',
   );
@@ -148,39 +156,53 @@ test('no link, no collaborators yet', async ({ page, context }) => {
 });
 
 test('link on', async ({ page, context }) => {
-  const { project } = await seedOwner(context, { link: true });
+  const { project } = await seedOwner(context, {
+    collaborators: 0,
+    link: true,
+  });
   const sheet = await openSheet(page, project.id);
   const field = sheet.getByRole('textbox', { name: 'Invite link' });
   await expect(field).toHaveValue(
     new RegExp(`^${WEB_ORIGIN}/invite/[A-Za-z0-9_-]{43}$`),
   );
-  await expect(sheet).toContainText('2 of 10 collaborators');
-  const names = sheet.getByRole('listitem');
-  await expect(names).toHaveCount(3);
-  await expect(names.nth(0)).toContainText('You');
-  await expect(names.nth(0)).toContainText('Owner');
-  await expect(names.nth(1)).toContainText('Sam Rivera');
-  await expect(names.nth(1)).toContainText('Joined Oct 20');
-  await expect(names.nth(2)).toContainText('Jo Park');
-  await expect(names.nth(2)).toContainText('Joined Oct 21');
-  await expect(
-    sheet.getByRole('button', { name: 'Remove Sam Rivera' }),
-  ).toBeVisible();
-  await expect(sheet.getByText(/@example\.com/)).toHaveCount(0);
+  await expect(countLine(sheet)).toHaveText('0 of 1 collaborator');
+  await expect(sheet.getByRole('button', { name: 'Copy link' })).toBeVisible();
   await captureScreenshot(page, 'share-link-on', { fullPage: false });
 });
 
 test('full', async ({ page, context }) => {
+  const { project } = await seedOwner(context, { link: true });
+  const sheet = await openSheet(page, project.id);
+  await expect(countLine(sheet)).toHaveText('1 of 1 collaborator');
+  await expect(countLine(sheet)).toHaveClass(/text-warning/);
+  await expect(sheet).toContainText(FULL_COPY);
+  const names = sheet.getByRole('listitem');
+  await expect(names).toHaveCount(2);
+  await expect(names.nth(0)).toContainText('You');
+  await expect(names.nth(0)).toContainText('Owner');
+  await expect(names.nth(1)).toContainText('Sam Rivera');
+  await expect(names.nth(1)).toContainText('Joined Oct 20');
+  await expect(
+    sheet.getByRole('button', { name: 'Remove Sam Rivera' }),
+  ).toBeVisible();
+  await expect(sheet.getByText(/@example\.com/)).toHaveCount(0);
+  await captureScreenshot(page, 'share-full', { fullPage: false });
+});
+
+test('over the limit from before', async ({ page, context }) => {
   const { project } = await seedOwner(context, {
-    collaborators: 10,
+    collaborators: 3,
     link: true,
   });
   const sheet = await openSheet(page, project.id);
-  await expect(sheet).toContainText('10 of 10 collaborators');
-  await expect(sheet).toContainText(
-    "New people can't join until you remove someone.",
-  );
-  await captureScreenshot(page, 'share-full', { fullPage: false });
+  await expect(countLine(sheet)).toHaveText('3 of 1 collaborator');
+  await expect(countLine(sheet)).toHaveClass(/text-warning/);
+  await expect(sheet).toContainText(FULL_COPY);
+  await expect(sheet.getByRole('listitem')).toHaveCount(4);
+  await expect(
+    sheet.getByRole('button', { name: 'Remove Jo Park' }),
+  ).toBeVisible();
+  await captureScreenshot(page, 'share-over-limit', { fullPage: false });
 });
 
 test('collaborator view', async ({ page, context }) => {
@@ -205,7 +227,8 @@ test('collaborator view', async ({ page, context }) => {
   await expect(sheet.getByRole('textbox')).toHaveCount(0);
   await expect(sheet.getByText(/@example\.com/)).toHaveCount(0);
   await expect(sheet.getByRole('button', { name: /^Remove/ })).toHaveCount(0);
-  await expect(sheet).not.toContainText('collaborators');
+  await expect(countLine(sheet)).toHaveCount(0);
+  await expect(sheet).not.toContainText(FULL_COPY);
   await expect(
     sheet.getByRole('button', { name: 'Leave project' }),
   ).toBeVisible();
@@ -312,7 +335,8 @@ test('owner removes a collaborator', async ({ page, context }) => {
   await confirm.getByRole('button', { name: 'Remove' }).click();
   await expect(confirm).toBeHidden();
   await expect(memberRow(sheet, 'Sam Rivera')).toHaveCount(0);
-  await expect(sheet).toContainText('1 of 10 collaborators');
+  await expect(countLine(sheet)).toHaveText('0 of 1 collaborator');
+  await expect(sheet).not.toContainText(FULL_COPY);
   expect(await membership(project.id, sam.id)).toHaveLength(0);
 });
 
@@ -351,7 +375,7 @@ test('opens from the track page', async ({ page, context }) => {
   await page.goto(`/app/projects/${project.id}/tracks/${track.id}`);
   await page.getByRole('button', { name: 'Share', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'Share project' });
-  await expect(sheet.getByRole('listitem')).toHaveCount(3);
+  await expect(sheet.getByRole('listitem')).toHaveCount(2);
   await sheet.getByRole('button', { name: 'Done' }).click();
   await expect(sheet).toBeHidden();
 });

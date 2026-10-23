@@ -1,9 +1,4 @@
-import {
-  type Member,
-  type Person,
-  PLANS,
-  type Project,
-} from "@repo/shared/schemas"
+import type { Member, Person, Project } from "@repo/shared/schemas"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
 import { CircleAlert, Copy, Share2, Users } from "lucide-react"
@@ -46,11 +41,11 @@ import { personFirstName, personName } from "@/features/members/person-name"
 import { forgetProject, PROJECTS_QUERY_KEY } from "@/features/projects/api"
 import { ConfirmDeleteDialog } from "@/features/projects/confirm-delete-dialog"
 import { httpStatus } from "@/lib/api"
-import { formatShortDate } from "@/lib/format"
+import { formatShortDate, plural } from "@/lib/format"
 import { usePhone } from "@/lib/use-media-query"
 import { cn } from "@/lib/utils"
 
-type ProjectRef = Pick<Project, "id" | "name" | "role">
+type ProjectRef = Pick<Project, "id" | "name" | "role" | "ownerLimits">
 
 // "Share" for the owner, "Members" for a collaborator. `onGone` is the page's not-found
 // state: the project was deleted or the caller was removed while the sheet was open.
@@ -407,7 +402,8 @@ function MemberList({
   const leaveRef = useRef<HTMLButtonElement>(null)
 
   const collaborators = members.filter((m) => m.role === "collaborator")
-  const full = collaborators.length >= PLANS.free.collaboratorLimit
+  const limit = project.ownerLimits.collaboratorLimit
+  const full = collaborators.length >= limit
 
   const confirmRemove = (member: Member) =>
     remove.mutate(member.id, {
@@ -461,8 +457,7 @@ function MemberList({
               full ? "font-semibold text-warning" : "text-muted-foreground",
             )}
           >
-            {collaborators.length} of {PLANS.free.collaboratorLimit}{" "}
-            collaborators
+            {collaborators.length} of {plural(limit, "collaborator")}
           </p>
         )}
       </div>
