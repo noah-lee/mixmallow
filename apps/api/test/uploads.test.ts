@@ -4,7 +4,7 @@ import {
   createUploadResponseSchema,
   MAX_FILE_BYTES,
   MB,
-  STORAGE_LIMIT_BYTES,
+  PLANS,
 } from '@repo/shared/schemas';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
@@ -34,12 +34,14 @@ beforeAll(async () => {
 afterAll(() => app.close());
 
 const MISSING_ID = '00000000-0000-4000-8000-000000000000';
-const audio = Buffer.from('RIFF fake wav bytes');
+const audio = Buffer.from('ID3 fake mp3 bytes');
 
 const uploadRows = (userId: string) =>
   app.db.select().from(uploads).where(eq(uploads.userId, userId));
 const trackRows = (userId: string) =>
   app.db.select().from(tracks).where(eq(tracks.userId, userId));
+const ownedProjects = (userId: string) =>
+  app.db.select().from(projects).where(eq(projects.userId, userId));
 const jobRows = () => app.db.select().from(transcodeJobs);
 
 function register(session: TestSession, payload: Record<string, unknown>) {
@@ -64,6 +66,22 @@ async function registered(
   return createUploadResponseSchema.parse(res.json());
 }
 
+// A WAV or FLAC upload registered before the free plan refused them, already stored.
+async function pendingUpload(
+  session: TestSession,
+  format: 'wav' | 'flac' = 'wav',
+) {
+  const upload = await createUpload(app.db, {
+    userId: session.user.id,
+    fileName: `Mix.${format}`,
+    format,
+    contentType: format === 'wav' ? 'audio/wav' : 'audio/flac',
+    sizeBytes: 30 * MB,
+  });
+  writeStoredObject(app, upload.storageKey, upload.sizeBytes);
+  return { uploadId: upload.id };
+}
+
 async function storedTrack(session: TestSession, sizeBytes: number) {
   const project = await createProject(app.db, { userId: session.user.id });
   await createTrack(app.db, {
@@ -79,7 +97,7 @@ describe('POST /api/uploads', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/uploads',
-      payload: { fileName: 'a.wav', sizeBytes: 1 },
+      payload: { fileName: 'a.mp3', sizeBytes: 1 },
     });
     expect(res.statusCode).toBe(401);
   });
@@ -89,7 +107,7 @@ describe('POST /api/uploads', () => {
     ['a text file', { fileName: 'notes.txt', sizeBytes: 1000 }],
     [
       'a file over the size limit',
-      { fileName: 'a.wav', sizeBytes: MAX_FILE_BYTES + 1 },
+      { fileName: 'a.mp3', sizeBytes: MAX_FILE_BYTES + 1 },
     ],
   ])('rejects %s and records nothing', async (_label, payload) => {
     const session = await createTestSession(app);
@@ -101,11 +119,11 @@ describe('POST /api/uploads', () => {
 
   it('refuses a file that would go over the storage limit', async () => {
     const session = await createTestSession(app);
-    const project = await storedTrack(session, 70 * MB);
+    const project = await storedTrack(session, 490 * MB);
     const res = await register(session, {
       projectId: project.id,
-      fileName: 'a.wav',
-      sizeBytes: 40 * MB,
+      fileName: 'a.mp3',
+      sizeBytes: 15 * MB,
     });
     expect(res.statusCode).toBe(403);
     expect(res.json()).toEqual({ error: 'storage_limit_reached' });
@@ -114,21 +132,71 @@ describe('POST /api/uploads', () => {
 
   it('allows filling storage exactly to the limit', async () => {
     const session = await createTestSession(app);
-    const project = await storedTrack(session, 70 * MB);
+    const project = await storedTrack(
+      session,
+      PLANS.free.storageLimitBytes - 20 * MB,
+    );
     const res = await register(session, {
       projectId: project.id,
-      fileName: 'a.wav',
-      sizeBytes: STORAGE_LIMIT_BYTES - 70 * MB,
+      fileName: 'a.mp3',
+      sizeBytes: 20 * MB,
     });
     expect(res.statusCode).toBe(201);
   });
 
   it('refuses a new project once the project limit is reached', async () => {
     const session = await createTestSession(app);
-    await createProject(app.db, { userId: session.user.id });
-    const res = await register(session, { fileName: 'a.wav', sizeBytes: 10 });
+    for (let i = 0; i < 3; i++) {
+      await createProject(app.db, { userId: session.user.id });
+    }
+    const res = await register(session, { fileName: 'a.mp3', sizeBytes: 10 });
     expect(res.statusCode).toBe(403);
     expect(res.json()).toEqual({ error: 'project_limit_reached' });
+    expect(await uploadRows(session.user.id)).toEqual([]);
+    expect(await ownedProjects(session.user.id)).toHaveLength(3);
+  });
+
+  it('creates a third project from a first upload while two are owned', async () => {
+    const session = await createTestSession(app);
+    for (let i = 0; i < 2; i++) {
+      await createProject(app.db, { userId: session.user.id });
+    }
+    const result = await uploadTrack(app, session, {
+      fileName: 'Late Bloom.mp3',
+    });
+    expect(result.track).toMatchObject({ version: 1, name: 'Late Bloom' });
+    expect(await ownedProjects(session.user.id)).toHaveLength(3);
+  });
+
+  it.each(['Mix.wav', 'Mix.flac'])(
+    'refuses %s on the free plan and records nothing',
+    async (fileName) => {
+      const session = await createTestSession(app);
+      const res = await register(session, { fileName, sizeBytes: 10 * MB });
+      expect(res.statusCode).toBe(403);
+      expect(res.json()).toEqual({ error: 'format_not_allowed' });
+      expect(await uploadRows(session.user.id)).toEqual([]);
+    },
+  );
+
+  it('refuses a file over the free per-file size and records nothing', async () => {
+    const session = await createTestSession(app);
+    const res = await register(session, {
+      fileName: 'Mix.mp3',
+      sizeBytes: 25 * MB,
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toEqual({ error: 'file_too_large' });
+    expect(await uploadRows(session.user.id)).toEqual([]);
+  });
+
+  it('accepts a file of exactly the free per-file size', async () => {
+    const session = await createTestSession(app);
+    const res = await register(session, {
+      fileName: 'Mix.mp3',
+      sizeBytes: 20 * MB,
+    });
+    expect(res.statusCode).toBe(201);
   });
 
   it("404s another user's project", async () => {
@@ -137,12 +205,31 @@ describe('POST /api/uploads', () => {
     const session = await createTestSession(app);
     const res = await register(session, {
       projectId: project.id,
-      fileName: 'a.wav',
+      fileName: 'a.mp3',
       sizeBytes: 10,
     });
     expect(res.statusCode).toBe(404);
     expect(await uploadRows(session.user.id)).toEqual([]);
   });
+
+  it.each([
+    ['a WAV', { fileName: 'a.wav', sizeBytes: 10 }],
+    ['an oversized file', { fileName: 'a.mp3', sizeBytes: 25 * MB }],
+  ])(
+    "404s %s into another user's project rather than refusing it",
+    async (_label, payload) => {
+      const other = await createTestSession(app);
+      const project = await createProject(app.db, { userId: other.user.id });
+      const session = await createTestSession(app);
+      const res = await register(session, {
+        projectId: project.id,
+        ...payload,
+      });
+      expect(res.statusCode).toBe(404);
+      expect(res.json()).toEqual({ error: 'not_found' });
+      expect(await uploadRows(session.user.id)).toEqual([]);
+    },
+  );
 
   it('returns a signed PUT with the content type taken from the extension', async () => {
     const session = await createTestSession(app);
@@ -205,7 +292,7 @@ describe('POST /api/uploads/:uploadId/complete', () => {
   it('creates the project and version 1 from the first upload', async () => {
     const session = await createTestSession(app);
     const result = await uploadTrack(app, session, {
-      fileName: 'Midnight Drive.wav',
+      fileName: 'Midnight Drive.mp3',
       bytes: audio,
       durationMs: 252_000,
       peaks: [3, 200, 17],
@@ -214,7 +301,7 @@ describe('POST /api/uploads/:uploadId/complete', () => {
       projectId: result.projectId,
       version: 1,
       name: 'Midnight Drive',
-      format: 'wav',
+      format: 'mp3',
       sizeBytes: audio.length,
       durationMs: 252_000,
       peaks: [3, 200, 17],
@@ -238,10 +325,10 @@ describe('POST /api/uploads/:uploadId/complete', () => {
     const second = await uploadTrack(app, session, {
       bytes: audio,
       projectId: first.projectId,
-      fileName: 'Mix v2.flac',
+      fileName: 'Mix v2.m4a',
     });
     expect(second.projectId).toBe(first.projectId);
-    expect(second.track).toMatchObject({ version: 2, format: 'flac' });
+    expect(second.track).toMatchObject({ version: 2, format: 'm4a' });
   });
 
   it('never reuses the number of a deleted version', async () => {
@@ -299,7 +386,7 @@ describe('POST /api/uploads/:uploadId/complete', () => {
     const session = await createTestSession(app);
     const project = await storedTrack(
       session,
-      STORAGE_LIMIT_BYTES - audio.length,
+      PLANS.free.storageLimitBytes - audio.length,
     );
     const upload = await registered(session, project.id);
     putUpload(app, upload, audio);
@@ -343,8 +430,7 @@ describe('POST /api/uploads/:uploadId/complete', () => {
 
   it('queues one transcode job for a completed WAV and answers as before', async () => {
     const session = await createTestSession(app);
-    const upload = await registered(session);
-    putUpload(app, upload, audio);
+    const upload = await pendingUpload(session);
     const res = await completeUpload(app, session, upload.uploadId);
     expect(res.statusCode).toBe(201);
     const body = completeUploadResponseSchema.parse(res.json());
@@ -361,7 +447,10 @@ describe('POST /api/uploads/:uploadId/complete', () => {
 
   it('queues a transcode job for a completed FLAC', async () => {
     const session = await createTestSession(app);
-    const { track } = await uploadTrack(app, session, { fileName: 'Mix.flac' });
+    const upload = await pendingUpload(session, 'flac');
+    const res = await completeUpload(app, session, upload.uploadId);
+    expect(res.statusCode).toBe(201);
+    const { track } = completeUploadResponseSchema.parse(res.json());
     const jobs = await jobRows();
     expect(jobs.map((job) => job.trackId)).toEqual([track.id]);
   });
@@ -392,7 +481,7 @@ describe('POST /api/uploads/:uploadId/complete', () => {
 
     const project = await storedTrack(
       session,
-      STORAGE_LIMIT_BYTES - audio.length,
+      PLANS.free.storageLimitBytes - audio.length,
     );
     const overLimit = await registered(session, project.id);
     putUpload(app, overLimit, audio);
@@ -410,8 +499,7 @@ describe('POST /api/uploads/:uploadId/complete', () => {
 
   it('queues one transcode job when the same upload is completed twice at once', async () => {
     const session = await createTestSession(app);
-    const upload = await registered(session);
-    putUpload(app, upload, audio);
+    const upload = await pendingUpload(session);
     await Promise.all([
       completeUpload(app, session, upload.uploadId),
       completeUpload(app, session, upload.uploadId),
@@ -490,7 +578,7 @@ describe('uploads by a collaborator', () => {
     await createTrack(app.db, {
       userId: shared.owner.user.id,
       projectId: shared.project.id,
-      sizeBytes: STORAGE_LIMIT_BYTES - 3 * MB - left,
+      sizeBytes: PLANS.free.storageLimitBytes - 3 * MB - left,
     });
   }
 
@@ -558,8 +646,34 @@ describe('uploads by a collaborator', () => {
     await fillOwner(shared, 5 * MB);
     const res = await register(shared.collaborator, {
       projectId: shared.project.id,
-      fileName: 'a.wav',
+      fileName: 'a.mp3',
       sizeBytes: 6 * MB,
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toEqual({ error: 'storage_limit_reached' });
+    expect(await uploadRows(shared.collaborator.user.id)).toEqual([]);
+  });
+
+  it("refuses a WAV from a collaborator under the owner's plan", async () => {
+    const { collaborator, project } = await shareProject(app);
+    const res = await register(collaborator, {
+      projectId: project.id,
+      fileName: 'Mix.wav',
+      sizeBytes: 10 * MB,
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toEqual({ error: 'format_not_allowed' });
+    expect(await uploadRows(collaborator.user.id)).toEqual([]);
+  });
+
+  it("refuses a collaborator's file bigger than the owner's last 10 MB", async () => {
+    const shared = await shareProject(app);
+    await fillOwner(shared, 10 * MB);
+    expect(await usageOf(shared.owner)).toBe(490 * MB);
+    const res = await register(shared.collaborator, {
+      projectId: shared.project.id,
+      fileName: 'Mix.mp3',
+      sizeBytes: 15 * MB,
     });
     expect(res.statusCode).toBe(403);
     expect(res.json()).toEqual({ error: 'storage_limit_reached' });
@@ -568,7 +682,7 @@ describe('uploads by a collaborator', () => {
 
   it("ignores the uploader's own full storage when uploading to a joined project", async () => {
     const { collaborator, project } = await shareProject(app);
-    await storedTrack(collaborator, STORAGE_LIMIT_BYTES);
+    await storedTrack(collaborator, PLANS.free.storageLimitBytes);
     const res = await registerUpload(app, collaborator, {
       bytes: audio,
       projectId: project.id,
@@ -599,7 +713,7 @@ describe('uploads by a collaborator', () => {
     expect(await uploadRows(jo.user.id)).toEqual([]);
     expect(await trackRows(jo.user.id)).toEqual([]);
     expect(await usageOf(shared.owner)).toBeLessThanOrEqual(
-      STORAGE_LIMIT_BYTES,
+      PLANS.free.storageLimitBytes,
     );
   });
 
@@ -622,7 +736,9 @@ describe('uploads by a collaborator', () => {
       completeUpload(app, jo, second.uploadId),
     ]);
     expect(results.map((r) => r.statusCode).sort()).toEqual([201, 403]);
-    expect(await usageOf(shared.owner)).toBe(STORAGE_LIMIT_BYTES - 4 * MB);
+    expect(await usageOf(shared.owner)).toBe(
+      PLANS.free.storageLimitBytes - 4 * MB,
+    );
   });
 
   it('completes uploads crossing between two owners at once', async () => {
@@ -683,7 +799,7 @@ describe('uploads by a collaborator', () => {
     const { collaborator, outsider, project } = await shareProject(app);
     const res = await register(outsider, {
       projectId: project.id,
-      fileName: 'a.wav',
+      fileName: 'a.mp3',
       sizeBytes: 10,
     });
     expect(res.statusCode).toBe(404);
@@ -702,7 +818,7 @@ describe('uploads by a collaborator', () => {
     const { collaborator } = await shareProject(app);
     const res = await register(collaborator, {
       projectId: 'nope',
-      fileName: 'a.wav',
+      fileName: 'a.mp3',
       sizeBytes: 10,
     });
     expect(res.statusCode).toBe(400);

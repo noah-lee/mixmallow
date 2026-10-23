@@ -1,4 +1,4 @@
-import { MAX_FILE_BYTES, MB, projectIdParamsSchema } from "@repo/shared/schemas"
+import { MB, PLANS, projectIdParamsSchema } from "@repo/shared/schemas"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import { ArrowLeft, CircleAlert, Ellipsis, Pencil, Trash2 } from "lucide-react"
@@ -72,7 +72,7 @@ function Project({ projectId }: { projectId: string }) {
   })
   const [gone, setGone] = useState(false)
 
-  const maxFileBytes = usage?.maxFileBytes ?? MAX_FILE_BYTES
+  const maxFileBytes = usage?.maxFileBytes ?? PLANS.free.maxFileBytes
   // Owner only: a collaborator never sees the owner's storage numbers.
   const spaceLeftBytes = usage
     ? Math.max(0, usage.storageLimitBytes - usage.storageUsedBytes)

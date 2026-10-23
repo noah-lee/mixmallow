@@ -98,6 +98,11 @@ function projectList() {
         collaboratorCount: 0,
         joinedAt: null,
         acceptsUploads: true,
+        ownerLimits: {
+          maxFileBytes: 20 * 1_048_576,
+          acceptedFormats: ['mp3', 'aac', 'm4a'],
+          collaboratorLimit: 1,
+        },
       },
     ],
     shared: [],

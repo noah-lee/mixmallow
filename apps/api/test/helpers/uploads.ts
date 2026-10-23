@@ -30,7 +30,7 @@ export function registerUpload(
   app: FastifyInstance,
   session: TestSession,
   {
-    fileName = 'Mix.wav',
+    fileName = 'Mix.mp3',
     bytes = Buffer.from('fake audio'),
     projectId,
   }: UploadOptions = {},

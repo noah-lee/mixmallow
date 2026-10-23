@@ -1,10 +1,4 @@
-import {
-  COLLABORATOR_LIMIT,
-  MAX_FILE_BYTES,
-  NOTE_LIMIT_PER_TRACK,
-  PROJECT_LIMIT,
-  STORAGE_LIMIT_BYTES,
-} from "@repo/shared/schemas"
+import { NOTE_LIMIT_PER_TRACK, PLANS } from "@repo/shared/schemas"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import {
   ContactLink,
@@ -41,18 +35,22 @@ function Terms() {
         <p>Each account can own:</p>
         <ul>
           <li>
-            up to {PROJECT_LIMIT} {PROJECT_LIMIT === 1 ? "project" : "projects"}
+            up to {PLANS.free.projectLimit}{" "}
+            {PLANS.free.projectLimit === 1 ? "project" : "projects"}
           </li>
           <li>
-            up to {formatBytes(STORAGE_LIMIT_BYTES)} of stored audio in total
-            {MAX_FILE_BYTES < STORAGE_LIMIT_BYTES &&
-              `, with each file up to ${formatBytes(MAX_FILE_BYTES)}`}
+            up to {formatBytes(PLANS.free.storageLimitBytes)} of stored audio in
+            total
+            {PLANS.free.maxFileBytes < PLANS.free.storageLimitBytes &&
+              `, with each file up to ${formatBytes(PLANS.free.maxFileBytes)}`}
           </li>
           <li>
             up to {NOTE_LIMIT_PER_TRACK} notes on each version, counting every
             member's notes
           </li>
-          <li>up to {COLLABORATOR_LIMIT} collaborators on each project</li>
+          <li>
+            up to {PLANS.free.collaboratorLimit} collaborators on each project
+          </li>
         </ul>
         <p>
           Projects you join, and versions you upload to them, count toward their

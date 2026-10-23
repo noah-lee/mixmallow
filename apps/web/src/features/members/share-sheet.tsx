@@ -1,7 +1,7 @@
 import {
-  COLLABORATOR_LIMIT,
   type Member,
   type Person,
+  PLANS,
   type Project,
 } from "@repo/shared/schemas"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -407,7 +407,7 @@ function MemberList({
   const leaveRef = useRef<HTMLButtonElement>(null)
 
   const collaborators = members.filter((m) => m.role === "collaborator")
-  const full = collaborators.length >= COLLABORATOR_LIMIT
+  const full = collaborators.length >= PLANS.free.collaboratorLimit
 
   const confirmRemove = (member: Member) =>
     remove.mutate(member.id, {
@@ -461,7 +461,8 @@ function MemberList({
               full ? "font-semibold text-warning" : "text-muted-foreground",
             )}
           >
-            {collaborators.length} of {COLLABORATOR_LIMIT} collaborators
+            {collaborators.length} of {PLANS.free.collaboratorLimit}{" "}
+            collaborators
           </p>
         )}
       </div>

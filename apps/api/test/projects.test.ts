@@ -1,5 +1,5 @@
 import { notes, projectMembers, projects, tracks, uploads } from '@repo/db';
-import { MB, NAME_MAX, STORAGE_LIMIT_BYTES } from '@repo/shared/schemas';
+import { MB, NAME_MAX, PLANS } from '@repo/shared/schemas';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -79,6 +79,11 @@ describe('GET /api/projects', () => {
           collaboratorCount: 0,
           joinedAt: null,
           acceptsUploads: true,
+          ownerLimits: {
+            maxFileBytes: 20 * MB,
+            acceptedFormats: ['mp3', 'aac', 'm4a'],
+            collaboratorLimit: 1,
+          },
         },
       ],
       shared: [],
@@ -481,7 +486,7 @@ describe('shared projects', () => {
     await createTrack(app.db, {
       userId: owner.user.id,
       projectId: project.id,
-      sizeBytes: STORAGE_LIMIT_BYTES - 3 * MB - MB / 2,
+      sizeBytes: PLANS.free.storageLimitBytes - 3 * MB - MB / 2,
     });
     const own = await get(`/api/projects/${project.id}`, owner);
     expect(own.json().acceptsUploads).toBe(false);
@@ -500,13 +505,35 @@ describe('shared projects', () => {
           'latestTrack',
           'name',
           'owner',
+          'ownerLimits',
           'role',
           'trackCount',
           'updatedAt',
         ].sort(),
       );
       expect(Object.keys(body.owner).sort()).toEqual(['id', 'name', 'picture']);
+      expect(Object.keys(body.ownerLimits).sort()).toEqual(
+        ['acceptedFormats', 'collaboratorLimit', 'maxFileBytes'].sort(),
+      );
     }
+  });
+
+  it("gives owner and collaborator the owner's file rules, without storage numbers", async () => {
+    const { owner, collaborator, project } = await shareProject(app);
+    const limits = {
+      maxFileBytes: 20 * MB,
+      acceptedFormats: ['mp3', 'aac', 'm4a'],
+      collaboratorLimit: 1,
+    };
+    for (const session of [owner, collaborator]) {
+      const res = await get(`/api/projects/${project.id}`, session);
+      expect(res.statusCode).toBe(200);
+      expect(res.json().ownerLimits).toEqual(limits);
+      expect(res.json()).not.toHaveProperty('storageLimitBytes');
+      expect(res.json()).not.toHaveProperty('storageUsedBytes');
+    }
+    const listed = await get('/api/projects', collaborator);
+    expect(listed.json().shared[0].ownerLimits).toEqual(limits);
   });
 
   it('accepts uploads while exactly 1 MB is left', async () => {
@@ -514,7 +541,7 @@ describe('shared projects', () => {
     await createTrack(app.db, {
       userId: owner.user.id,
       projectId: project.id,
-      sizeBytes: STORAGE_LIMIT_BYTES - 4 * MB,
+      sizeBytes: PLANS.free.storageLimitBytes - 4 * MB,
     });
     const res = await get(`/api/projects/${project.id}`, collaborator);
     expect(res.json().acceptsUploads).toBe(true);

@@ -1,6 +1,5 @@
 import { projectMembers, projects, users } from '@repo/db';
 import {
-  COLLABORATOR_LIMIT,
   type InviteMembershipResponse,
   type InviteResponse,
   inviteTokenParamsSchema,
@@ -11,6 +10,7 @@ import { count, eq } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { projectRole } from '../projects/access.ts';
 import { landingFor } from '../projects/queries.ts';
+import { planFor } from '../usage/plan.ts';
 
 const notFound = { error: 'not_found' } as const;
 
@@ -84,7 +84,7 @@ export const inviteRoutes: FastifyPluginAsyncZod = async (app) => {
     const result = await app.db.transaction(async (tx) => {
       // Locked so two joins for the last slot can't both see room for one more.
       const [project] = await tx
-        .select({ id: projects.id })
+        .select({ id: projects.id, ownerId: projects.userId })
         .from(projects)
         .where(eq(projects.inviteToken, token))
         .for('update');
@@ -94,7 +94,7 @@ export const inviteRoutes: FastifyPluginAsyncZod = async (app) => {
           .select({ n: count() })
           .from(projectMembers)
           .where(eq(projectMembers.projectId, project.id));
-        if ((members?.n ?? 0) >= COLLABORATOR_LIMIT) {
+        if ((members?.n ?? 0) >= planFor(project.ownerId).collaboratorLimit) {
           return { status: 403, body: { error: 'project_full' } } as const;
         }
         await tx

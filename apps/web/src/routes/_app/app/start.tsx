@@ -1,8 +1,4 @@
-import {
-  MAX_FILE_BYTES,
-  PROJECT_LIMIT,
-  STORAGE_LIMIT_BYTES,
-} from "@repo/shared/schemas"
+import { PLANS } from "@repo/shared/schemas"
 import { createFileRoute, redirect } from "@tanstack/react-router"
 import { useMe } from "@/features/auth/api"
 import { projectsQueryOptions } from "@/features/projects/api"
@@ -30,11 +26,12 @@ function firstName(name: string | null): string {
 function FirstUpload() {
   const { me: snapshot } = Route.useRouteContext()
   const me = useMe().data ?? snapshot
-  // Limits fall back to the shared constants while usage loads or if it fails.
+  // Limits fall back to the free plan while usage loads or if it fails.
   const usage = useUsage().data
-  const maxFileBytes = usage?.maxFileBytes ?? MAX_FILE_BYTES
-  const storageLimitBytes = usage?.storageLimitBytes ?? STORAGE_LIMIT_BYTES
-  const projectLimit = usage?.projectLimit ?? PROJECT_LIMIT
+  const maxFileBytes = usage?.maxFileBytes ?? PLANS.free.maxFileBytes
+  const storageLimitBytes =
+    usage?.storageLimitBytes ?? PLANS.free.storageLimitBytes
+  const projectLimit = usage?.projectLimit ?? PLANS.free.projectLimit
   const upload = useUpload({ maxFileBytes })
 
   return (

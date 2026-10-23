@@ -1,11 +1,7 @@
 import { type Database, projects, type Transaction, tracks } from '@repo/db';
-import {
-  MAX_FILE_BYTES,
-  PROJECT_LIMIT,
-  STORAGE_LIMIT_BYTES,
-  type UsageResponse,
-} from '@repo/shared/schemas';
+import type { UsageResponse } from '@repo/shared/schemas';
 import { eq, sql } from 'drizzle-orm';
+import { planFor } from './plan.ts';
 
 // Committed tracks only: a pending upload holds no quota until it completes. Storage counts
 // every version in the user's own projects, whoever uploaded it.
@@ -21,11 +17,14 @@ export async function usageFor(
     .from(tracks)
     .innerJoin(projects, eq(projects.id, tracks.projectId))
     .where(eq(projects.userId, userId));
+  const plan = planFor(userId);
   return {
     projectCount: row?.projectCount ?? 0,
-    projectLimit: PROJECT_LIMIT,
+    projectLimit: plan.projectLimit,
     storageUsedBytes: Number(row?.storageUsedBytes ?? 0),
-    storageLimitBytes: STORAGE_LIMIT_BYTES,
-    maxFileBytes: MAX_FILE_BYTES,
+    storageLimitBytes: plan.storageLimitBytes,
+    maxFileBytes: plan.maxFileBytes,
+    acceptedFormats: plan.acceptedFormats,
+    collaboratorLimit: plan.collaboratorLimit,
   };
 }

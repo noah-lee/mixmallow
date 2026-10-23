@@ -348,6 +348,27 @@ describe('tracks of a shared project', () => {
     expect(keyFromUrl(url)).toBe(track.storageKey);
   });
 
+  it('keeps serving an existing WAV larger than a free file to owner and collaborator', async () => {
+    const shared = await shareProject(app);
+    const track = await createTrack(app.db, {
+      userId: shared.owner.user.id,
+      projectId: shared.project.id,
+      sizeBytes: 60 * MB,
+    });
+    expect(track.format).toBe('wav');
+    writeStoredObject(app, track.storageKey, track.sizeBytes);
+    for (const session of [shared.owner, shared.collaborator]) {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/tracks/${track.id}/audio`,
+        cookies: session.cookies,
+      });
+      expect(res.statusCode).toBe(200);
+      const { url } = audioUrlResponseSchema.parse(res.json());
+      expect(keyFromUrl(url)).toBe(track.storageKey);
+    }
+  });
+
   it('404s the track and its audio for an outsider', async () => {
     const { outsider, track } = await sharedTrack();
     for (const url of [

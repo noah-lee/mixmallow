@@ -1,8 +1,5 @@
 import { projectMembers, projects } from '@repo/db';
-import {
-  COLLABORATOR_LIMIT,
-  inviteLinkResponseSchema,
-} from '@repo/shared/schemas';
+import { inviteLinkResponseSchema, PLANS } from '@repo/shared/schemas';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -10,6 +7,7 @@ import { createTestApp } from './helpers/app.ts';
 import {
   createMember,
   createProject,
+  createTrack,
   createUser,
 } from './helpers/factories.ts';
 import { createTestSession, type TestSession } from './helpers/session.ts';
@@ -54,6 +52,15 @@ async function sharedWithLink() {
   const shared = await shareProject(app);
   const link = await createLink(shared.owner, shared.project.id);
   return { ...shared, ...link };
+}
+
+// The same project with Sam gone, so its only collaborator slot is open.
+async function openWithLink() {
+  const shared = await sharedWithLink();
+  await app.db
+    .delete(projectMembers)
+    .where(eq(projectMembers.projectId, shared.project.id));
+  return shared;
 }
 
 const memberIds = async (projectId: string) =>
@@ -332,7 +339,7 @@ describe('POST /api/invites/:token/join', () => {
   });
 
   it('joins and lands on the newest version', async () => {
-    const { outsider, project, tracks, token } = await sharedWithLink();
+    const { outsider, project, tracks, token } = await openWithLink();
     const res = await join(token, outsider);
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
@@ -379,27 +386,87 @@ describe('POST /api/invites/:token/join', () => {
 
   it('refuses a new collaborator once the project is full, keeping the link', async () => {
     const { outsider, project, token } = await sharedWithLink();
-    await fill(project.id, COLLABORATOR_LIMIT - 1);
+    await fill(project.id, PLANS.free.collaboratorLimit - 1);
     const res = await join(token, outsider);
     expect(res.statusCode).toBe(403);
     expect(res.json()).toEqual({ error: 'project_full' });
-    expect(await memberIds(project.id)).toHaveLength(COLLABORATOR_LIMIT);
+    expect(await memberIds(project.id)).toHaveLength(
+      PLANS.free.collaboratorLimit,
+    );
     expect(await tokenOf(project.id)).toBe(token);
     expect((await inject('GET', `/api/invites/${token}`)).statusCode).toBe(200);
   });
 
-  it('lets only one of two simultaneous joins take the last slot', async () => {
-    const { project, token } = await sharedWithLink();
-    await fill(project.id, COLLABORATOR_LIMIT - 2);
+  it('lets only one of two simultaneous joins take the only slot', async () => {
+    const owner = await createTestSession(app);
+    const project = await createProject(app.db, { userId: owner.user.id });
+    const { token } = await createLink(owner, project.id);
     const a = await createTestSession(app);
     const b = await createTestSession(app);
     const results = await Promise.all([join(token, a), join(token, b)]);
     expect(results.map((r) => r.statusCode).sort()).toEqual([200, 403]);
-    expect(await memberIds(project.id)).toHaveLength(COLLABORATOR_LIMIT);
+    expect(await memberIds(project.id)).toHaveLength(1);
+  });
+
+  it('refuses a second collaborator and frees the slot when the first is removed', async () => {
+    const { owner, collaborator, outsider, project, token } =
+      await sharedWithLink();
+    const refused = await join(token, outsider);
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json()).toEqual({ error: 'project_full' });
+    expect(await memberIds(project.id)).toEqual([collaborator.user.id]);
+    expect(await tokenOf(project.id)).toBe(token);
+
+    const removed = await inject(
+      'DELETE',
+      `/api/projects/${project.id}/members/${collaborator.user.id}`,
+      owner,
+    );
+    expect(removed.statusCode).toBe(204);
+    expect((await join(token, outsider)).statusCode).toBe(200);
+    expect(await memberIds(project.id)).toEqual([outsider.user.id]);
+  });
+
+  it('keeps every collaborator of a project already over the limit, refusing more', async () => {
+    const owner = await createTestSession(app);
+    const project = await createProject(app.db, { userId: owner.user.id });
+    const track = await createTrack(app.db, {
+      userId: owner.user.id,
+      projectId: project.id,
+    });
+    const members = [];
+    for (let i = 0; i < 3; i++) {
+      const member = await createTestSession(app);
+      await createMember(app.db, {
+        projectId: project.id,
+        userId: member.user.id,
+      });
+      members.push(member);
+    }
+    for (const member of members) {
+      const res = await inject('GET', `/api/projects/${project.id}`, member);
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ collaboratorCount: 3 });
+      const tracks = await inject(
+        'GET',
+        `/api/projects/${project.id}/tracks`,
+        member,
+      );
+      expect(tracks.statusCode).toBe(200);
+      expect(tracks.json().items.map((t: { id: string }) => t.id)).toEqual([
+        track.id,
+      ]);
+    }
+    const { token } = await createLink(owner, project.id);
+    const fourth = await createTestSession(app);
+    const res = await join(token, fourth);
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toEqual({ error: 'project_full' });
+    expect(await memberIds(project.id)).toHaveLength(3);
   });
 
   it("leaves the joiner's own usage unchanged", async () => {
-    const { outsider, token } = await sharedWithLink();
+    const { outsider, token } = await openWithLink();
     const usage = () => inject('GET', '/api/usage', outsider);
     const before = (await usage()).json();
     expect((await join(token, outsider)).statusCode).toBe(200);

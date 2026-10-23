@@ -4,11 +4,14 @@ import {
   createNoteBodySchema,
   createUploadBodySchema,
   fileExtension,
+  formatList,
   inviteTokenSchema,
+  isPlanFormat,
   MAX_FILE_BYTES,
   meResponseSchema,
   NAME_MAX,
   nameFromFileName,
+  PLANS,
   RETURN_PATH_MAX,
   renameBodySchema,
   returnPathSchema,
@@ -123,10 +126,44 @@ describe('createUploadBodySchema', () => {
     ).toBe(false);
   });
 
+  it('accepts a WAV of the widest size any plan allows', () => {
+    expect(
+      createUploadBodySchema.safeParse({
+        fileName: 'Mix.wav',
+        sizeBytes: MAX_FILE_BYTES,
+      }).success,
+    ).toBe(true);
+  });
+
   it('rejects a non-uuid projectId', () => {
     expect(
       createUploadBodySchema.safeParse({ ...valid, projectId: 'p1' }).success,
     ).toBe(false);
+  });
+});
+
+describe('isPlanFormat', () => {
+  it.each(['a.mp3', 'a.MP3', 'a.aac', 'a.m4a'])(
+    'accepts %s on the free plan',
+    (fileName) => {
+      expect(isPlanFormat(PLANS.free, fileName)).toBe(true);
+    },
+  );
+
+  it.each(['a.wav', 'a.flac', 'a.txt', 'mp3'])(
+    'refuses %s on the free plan',
+    (fileName) => {
+      expect(isPlanFormat(PLANS.free, fileName)).toBe(false);
+    },
+  );
+});
+
+describe('formatList', () => {
+  it('names formats in upper case joined with a final "or"', () => {
+    expect(formatList(PLANS.free.acceptedFormats)).toBe('MP3, AAC or M4A');
+    expect(formatList(['mp3', 'wav'])).toBe('MP3 or WAV');
+    expect(formatList(['mp3'])).toBe('MP3');
+    expect(formatList([])).toBe('');
   });
 });
 

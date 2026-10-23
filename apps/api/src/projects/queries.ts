@@ -7,13 +7,9 @@ import {
   uploads,
   users,
 } from '@repo/db';
-import {
-  type Landing,
-  MB,
-  type Project,
-  STORAGE_LIMIT_BYTES,
-} from '@repo/shared/schemas';
+import { type Landing, MB, PLANS, type Project } from '@repo/shared/schemas';
 import { and, desc, eq, isNotNull, or, type SQL, sql } from 'drizzle-orm';
+import { planFor } from '../usage/plan.ts';
 
 // Plain SQL with an explicit outer reference: inside a subquery Drizzle renders columns
 // unqualified, so `${projects.id}` would bind to the inner table.
@@ -28,8 +24,8 @@ const projectFields = {
     version: number;
   } | null>`(select json_build_object('id', t.id, 'version', t.version) from tracks t where t.project_id = "projects"."id" order by t.version desc limit 1)`,
   collaboratorCount: sql<number>`(select count(*)::int from project_members m where m.project_id = "projects"."id")`,
-  // Same sum as usageFor, for the project's owner.
-  acceptsUploads: sql<boolean>`(select coalesce(sum(t.size_bytes), 0) from tracks t join projects p on p.id = t.project_id where p.user_id = "projects"."user_id") <= ${STORAGE_LIMIT_BYTES - MB}`,
+  // Same sum as usageFor, for the project's owner. Assumes every owner is on the free plan.
+  acceptsUploads: sql<boolean>`(select coalesce(sum(t.size_bytes), 0) from tracks t join projects p on p.id = t.project_id where p.user_id = "projects"."user_id") <= ${PLANS.free.storageLimitBytes - MB}`,
   ownerId: users.id,
   ownerName: users.name,
   ownerPicture: users.picture,
@@ -56,14 +52,19 @@ async function selectProjects(
     )
     .where(where)
     .orderBy(...order);
-  return rows.map(({ ownerId, ownerName, ownerPicture, joinedAt, ...row }) => ({
-    ...row,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-    role: ownerId === userId ? 'owner' : 'collaborator',
-    owner: { id: ownerId, name: ownerName, picture: ownerPicture },
-    joinedAt: joinedAt?.toISOString() ?? null,
-  }));
+  return rows.map(({ ownerId, ownerName, ownerPicture, joinedAt, ...row }) => {
+    const { maxFileBytes, acceptedFormats, collaboratorLimit } =
+      planFor(ownerId);
+    return {
+      ...row,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+      role: ownerId === userId ? 'owner' : 'collaborator',
+      owner: { id: ownerId, name: ownerName, picture: ownerPicture },
+      joinedAt: joinedAt?.toISOString() ?? null,
+      ownerLimits: { maxFileBytes, acceptedFormats, collaboratorLimit },
+    };
+  });
 }
 
 export async function listProjects(

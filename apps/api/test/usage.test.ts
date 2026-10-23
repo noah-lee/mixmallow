@@ -1,9 +1,4 @@
-import {
-  MAX_FILE_BYTES,
-  MB,
-  PROJECT_LIMIT,
-  STORAGE_LIMIT_BYTES,
-} from '@repo/shared/schemas';
+import { MB, PLANS } from '@repo/shared/schemas';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp } from './helpers/app.ts';
@@ -31,17 +26,20 @@ describe('GET /api/usage', () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it('returns zeros and the limits for a new user', async () => {
+  it("returns zeros and the free plan's limits for a new user", async () => {
     const { cookies } = await createTestSession(app);
     const res = await getUsage(cookies);
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
       projectCount: 0,
-      projectLimit: PROJECT_LIMIT,
+      projectLimit: 3,
       storageUsedBytes: 0,
-      storageLimitBytes: STORAGE_LIMIT_BYTES,
-      maxFileBytes: MAX_FILE_BYTES,
+      storageLimitBytes: 500 * MB,
+      maxFileBytes: 20 * MB,
+      acceptedFormats: ['mp3', 'aac', 'm4a'],
+      collaboratorLimit: 1,
     });
+    expect(res.json()).toMatchObject(PLANS.free);
   });
 
   it("counts only the user's own committed tracks", async () => {
@@ -103,18 +101,18 @@ describe('GET /api/usage', () => {
       const track = await createTrack(app.db, {
         userId: session.user.id,
         projectId: project.id,
-        sizeBytes: 10 * MB,
+        sizeBytes: 70 * MB,
         previewKey,
       });
-      writeStoredObject(app, track.storageKey, 10 * MB);
+      writeStoredObject(app, track.storageKey, 70 * MB);
       writeStoredObject(app, previewKey, 2 * MB);
     }
 
     const res = await getUsage(session.cookies);
-    expect(res.json()).toMatchObject({ storageUsedBytes: 70 * MB });
+    expect(res.json()).toMatchObject({ storageUsedBytes: 490 * MB });
 
     const upload = await registerUpload(app, session, {
-      bytes: Buffer.alloc(40 * MB),
+      bytes: Buffer.alloc(15 * MB),
       projectId: project.id,
     });
     expect(upload.statusCode).toBe(403);

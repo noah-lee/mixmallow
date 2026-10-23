@@ -7,9 +7,8 @@ import {
   completeUploadBodySchema,
   createUploadBodySchema,
   fileExtension,
+  isPlanFormat,
   nameFromFileName,
-  PROJECT_LIMIT,
-  STORAGE_LIMIT_BYTES,
   uploadIdParamsSchema,
 } from '@repo/shared/schemas';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
@@ -18,6 +17,7 @@ import { lockMembership, projectRole } from '../projects/access.ts';
 import { storageKey } from '../storage/driver.ts';
 import { findTrackDetail } from '../tracks/queries.ts';
 import { enqueueTranscode, needsPreview } from '../transcode/queue.ts';
+import { planFor } from '../usage/plan.ts';
 import { usageFor } from '../usage/queries.ts';
 
 const notFound = { error: 'not_found' } as const;
@@ -53,11 +53,12 @@ async function limitError(
   ownerId: string,
   upload: { projectId: string | null; sizeBytes: number },
 ): Promise<'project_limit_reached' | 'storage_limit_reached' | null> {
+  const plan = planFor(ownerId);
   const usage = await usageFor(tx, ownerId);
-  if (upload.projectId === null && usage.projectCount >= PROJECT_LIMIT) {
+  if (upload.projectId === null && usage.projectCount >= plan.projectLimit) {
     return 'project_limit_reached';
   }
-  if (usage.storageUsedBytes + upload.sizeBytes > STORAGE_LIMIT_BYTES) {
+  if (usage.storageUsedBytes + upload.sizeBytes > plan.storageLimitBytes) {
     return 'storage_limit_reached';
   }
   return null;
@@ -105,6 +106,14 @@ export const uploadRoutes: FastifyPluginAsyncZod = async (app) => {
           if (!project || !(await projectRole(tx, userId, projectId))) {
             return { error: 'not_found', status: 404 } as const;
           }
+        }
+        // File rules are checked here only: an upload registered under them may complete.
+        const plan = planFor(ownerId);
+        if (!isPlanFormat(plan, fileName)) {
+          return { error: 'format_not_allowed', status: 403 } as const;
+        }
+        if (sizeBytes > plan.maxFileBytes) {
+          return { error: 'file_too_large', status: 403 } as const;
         }
         const limit = await limitError(tx, ownerId, { projectId, sizeBytes });
         if (limit) return { error: limit, status: 403 } as const;

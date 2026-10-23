@@ -2,7 +2,10 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { tracks, transcodeJobs } from '@repo/db';
-import { audioUrlResponseSchema } from '@repo/shared/schemas';
+import {
+  audioUrlResponseSchema,
+  completeUploadResponseSchema,
+} from '@repo/shared/schemas';
 import { eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -18,10 +21,11 @@ import {
   createProject,
   createTrack,
   createTranscodeJob,
+  createUpload,
 } from './helpers/factories.ts';
 import { keyFromUrl } from './helpers/memory-storage.ts';
 import { createTestSession, type TestSession } from './helpers/session.ts';
-import { uploadTrack } from './helpers/uploads.ts';
+import { completeUpload, writeStoredObject } from './helpers/uploads.ts';
 
 let app: FastifyInstance;
 let tmpDir: string;
@@ -147,9 +151,11 @@ describe('transcode worker', () => {
     const worker = startWorker(deps(transcode), { pollMs: HOUR_MS });
     try {
       await worker.ready;
-      const { track } = await uploadTrack(app, session, {
-        fileName: 'Mix.wav',
-      });
+      const upload = await createUpload(app.db, { userId: session.user.id });
+      writeStoredObject(app, upload.storageKey, upload.sizeBytes);
+      const completed = await completeUpload(app, session, upload.id);
+      expect(completed.statusCode).toBe(201);
+      const { track } = completeUploadResponseSchema.parse(completed.json());
       await waitFor(async () => {
         const [job] = await app.db
           .select()

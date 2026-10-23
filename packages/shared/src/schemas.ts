@@ -40,9 +40,8 @@ export const returnPathSchema = z
 export type ReturnPath = z.infer<typeof returnPathSchema>;
 
 export const MB = 1_048_576;
+// The widest file any plan allows; the owner's plan narrows it when the upload is registered.
 export const MAX_FILE_BYTES = 100 * MB;
-export const STORAGE_LIMIT_BYTES = 100 * MB;
-export const PROJECT_LIMIT = 1;
 export const NOTE_LIMIT_PER_TRACK = 500;
 export const NAME_MAX = 100;
 export const NOTE_TEXT_MAX = 2000;
@@ -80,6 +79,43 @@ export function nameFromFileName(fileName: string): string {
   return base.slice(0, NAME_MAX).trim() || 'Untitled';
 }
 
+export const planIdSchema = z.enum(['free']);
+
+export type PlanId = z.infer<typeof planIdSchema>;
+
+export type Plan = {
+  projectLimit: number;
+  storageLimitBytes: number;
+  maxFileBytes: number;
+  acceptedFormats: AudioFormat[];
+  // Collaborators per project; the owner is not counted.
+  collaboratorLimit: number;
+};
+
+// Every server check, the usage endpoint and the UI read limits from here.
+export const PLANS: Record<PlanId, Plan> = {
+  free: {
+    projectLimit: 3,
+    storageLimitBytes: 500 * MB,
+    maxFileBytes: 20 * MB,
+    acceptedFormats: ['mp3', 'aac', 'm4a'],
+    collaboratorLimit: 1,
+  },
+};
+
+export function isPlanFormat(plan: Plan, fileName: string): boolean {
+  const format = audioFormatSchema.safeParse(fileExtension(fileName));
+  return format.success && plan.acceptedFormats.includes(format.data);
+}
+
+// "MP3, AAC or M4A"
+export function formatList(formats: readonly AudioFormat[]): string {
+  const names = formats.map((format) => format.toUpperCase());
+  const last = names.pop();
+  if (last === undefined) return '';
+  return names.length ? `${names.join(', ')} or ${last}` : last;
+}
+
 export const nameSchema = z.string().trim().min(1).max(NAME_MAX);
 
 export const renameBodySchema = z.object({ name: nameSchema });
@@ -99,12 +135,11 @@ export const usageResponseSchema = z.object({
   storageUsedBytes: count,
   storageLimitBytes: count,
   maxFileBytes: count,
+  acceptedFormats: z.array(audioFormatSchema),
+  collaboratorLimit: count,
 });
 
 export type UsageResponse = z.infer<typeof usageResponseSchema>;
-
-// Collaborators per project; the owner is not counted.
-export const COLLABORATOR_LIMIT = 10;
 
 export const projectRoleSchema = z.enum(['owner', 'collaborator']);
 
@@ -135,6 +170,12 @@ export const projectSchema = z.object({
   joinedAt: z.iso.datetime().nullable(),
   // The owner has at least 1 MB of storage left. Collaborators never see byte counts.
   acceptsUploads: z.boolean(),
+  // The owner's file rules; never storage numbers.
+  ownerLimits: z.object({
+    maxFileBytes: count,
+    acceptedFormats: z.array(audioFormatSchema),
+    collaboratorLimit: count,
+  }),
 });
 
 export type Project = z.infer<typeof projectSchema>;
