@@ -306,8 +306,9 @@ test('owner removes a collaborator', async ({ page, context }) => {
     name: 'Remove Sam from Midnight Drive?',
   });
   await expect(confirm).toContainText(
-    'Their notes stay. They can rejoin with the current link, so reset it to stop that.',
+    'Their notes and versions stay. They can rejoin with the current link, so reset it to stop that.',
   );
+  await captureScreenshot(page, 'share-remove-confirm', { fullPage: false });
   await confirm.getByRole('button', { name: 'Remove' }).click();
   await expect(confirm).toBeHidden();
   await expect(memberRow(sheet, 'Sam Rivera')).toHaveCount(0);
@@ -330,7 +331,10 @@ test('collaborator leaves', async ({ page, context }) => {
   const confirm = page.getByRole('alertdialog', {
     name: 'Leave Midnight Drive?',
   });
-  await expect(confirm).toContainText('Your notes stay in the project.');
+  await expect(confirm).toContainText(
+    'Your notes and versions stay in the project.',
+  );
+  await captureScreenshot(page, 'share-leave-confirm', { fullPage: false });
   await confirm.getByRole('button', { name: 'Leave project' }).click();
   await expect(page).toHaveURL(/\/app\/projects$/);
   await expect(page.getByRole('link', { name: /Sam's song/ })).toBeVisible();

@@ -518,7 +518,7 @@ function MemberList({
             ? `Remove ${personFirstName(removing)} from ${project.name}?`
             : ""
         }
-        description="Their notes stay. They can rejoin with the current link, so reset it to stop that."
+        description="Their notes and versions stay. They can rejoin with the current link, so reset it to stop that."
         confirmLabel="Remove"
         pending={remove.isPending}
         onConfirm={() => removing && confirmRemove(removing)}
@@ -528,7 +528,7 @@ function MemberList({
         open={leaving}
         onOpenChange={setLeaving}
         title={`Leave ${project.name}?`}
-        description="Your notes stay in the project."
+        description="Your notes and versions stay in the project."
         confirmLabel="Leave project"
         pending={leaveProject.isPending}
         onConfirm={() => void confirmLeave()}
