@@ -218,6 +218,7 @@ function ShareBody({
           project={project}
           members={members.data.items}
           meId={me.id}
+          linkOff={link.data?.url === null}
         />
       ) : (
         <MembersSkeleton />
@@ -384,10 +385,13 @@ function MemberList({
   project,
   members,
   meId,
+  linkOff,
 }: {
   project: ProjectRef
   members: Member[]
   meId: string
+  // The owner has no invite link yet (or turned it off).
+  linkOff: boolean
 }) {
   const qc = useQueryClient()
   const navigate = useNavigate()
@@ -492,7 +496,10 @@ function MemberList({
       </ul>
       {owner && collaborators.length === 0 && (
         <p className="text-sm text-muted-foreground">
-          No one has joined yet. Share the link to invite someone.
+          No one has joined yet.{" "}
+          {linkOff
+            ? "Create a link to invite someone."
+            : "Share the link to invite someone."}
         </p>
       )}
       {!owner && (

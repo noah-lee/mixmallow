@@ -147,7 +147,7 @@ test('no link, no collaborators yet', async ({ page, context }) => {
   await expect(countLine(sheet)).not.toHaveClass(/text-warning/);
   await expect(sheet).not.toContainText(FULL_COPY);
   await expect(sheet).toContainText(
-    'No one has joined yet. Share the link to invite someone.',
+    'No one has joined yet. Create a link to invite someone.',
   );
   const me = memberRow(sheet, 'You');
   await expect(me).toContainText('Owner');
@@ -167,6 +167,9 @@ test('link on', async ({ page, context }) => {
   );
   await expect(countLine(sheet)).toHaveText('0 of 1 collaborator');
   await expect(sheet.getByRole('button', { name: 'Copy link' })).toBeVisible();
+  await expect(sheet).toContainText(
+    'No one has joined yet. Share the link to invite someone.',
+  );
   await captureScreenshot(page, 'share-link-on', { fullPage: false });
 });
 
