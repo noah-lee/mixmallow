@@ -35,12 +35,16 @@ export type UploadState =
   // A collaborator's file the owner's storage can't take; retrying can't help.
   | { status: "refused"; prepared: PreparedFile }
 
+// Format names are read as letters: "an MP3", "an AAC", but "a WAV", "a FLAC".
+const VOWEL_SOUND = new Set<AudioFormat>(["mp3", "aac", "m4a"])
+const aFormat = (formats: readonly AudioFormat[]) =>
+  `${formats[0] && VOWEL_SOUND.has(formats[0]) ? "an" : "a"} ${formatList(formats)}`
+
 export const uploadMessages = {
-  format: (formats: readonly AudioFormat[]) =>
-    `Use an ${formatList(formats)} file`,
+  format: (formats: readonly AudioFormat[]) => `Use ${aFormat(formats)} file`,
   // An audio format the plan doesn't take, e.g. a WAV bounce on the free plan.
   otherFormat: (formats: readonly AudioFormat[]) =>
-    `Upload an ${formatList(formats)} file. Export your mix as a 320 kbps MP3 to upload it.`,
+    `Upload ${aFormat(formats)} file. Export your mix as a 320 kbps MP3 to upload it.`,
   size: (maxFileBytes: number) =>
     `Files can be up to ${formatBytes(maxFileBytes)}`,
   unreadable: "This file couldn't be read as audio",

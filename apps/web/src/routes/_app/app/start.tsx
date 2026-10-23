@@ -1,8 +1,8 @@
 import { PLANS } from "@repo/shared/schemas"
-import { createFileRoute, Link, redirect } from "@tanstack/react-router"
-import { ArrowLeft } from "lucide-react"
+import { createFileRoute, redirect } from "@tanstack/react-router"
 import { useMe } from "@/features/auth/api"
 import { projectsQueryOptions } from "@/features/projects/api"
+import { BackToProjects } from "@/features/projects/back-to-projects"
 import { UploadPanel } from "@/features/uploads/upload-panel"
 import { useUpload } from "@/features/uploads/use-upload"
 import { usageQueryOptions, useUsage } from "@/features/usage/api"
@@ -45,16 +45,7 @@ function StartPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      {ownsProjects && (
-        <Link
-          to="/app/projects"
-          aria-label="Back to projects"
-          className="-mt-2 -mb-3 -ml-2 inline-flex min-h-11 items-center gap-1.5 self-start rounded-full px-2 text-sm font-semibold text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <ArrowLeft aria-hidden className="size-4" />
-          Projects
-        </Link>
-      )}
+      {ownsProjects && <BackToProjects />}
       <div className="flex flex-col gap-2">
         <h1 className="text-heading-1 text-balance">
           {ownsProjects

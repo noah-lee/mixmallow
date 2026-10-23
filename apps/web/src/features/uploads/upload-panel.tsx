@@ -316,13 +316,10 @@ export function Dropzone({
         />
       </section>
       {error && (
-        <p
-          role="alert"
-          className="flex items-start gap-2 text-sm text-destructive"
-        >
-          <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-          {error}
-        </p>
+        <Alert variant="destructive">
+          <CircleAlert aria-hidden="true" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
     </div>
   )

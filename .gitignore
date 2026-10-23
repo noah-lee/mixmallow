@@ -5,6 +5,8 @@ build/
 
 .turbo/
 .vite/
+# TanStack Router generator scratch files
+.tanstack/
 
 .env
 .env.local
