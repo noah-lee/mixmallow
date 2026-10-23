@@ -33,19 +33,14 @@ function ProjectsPage() {
     return <Navigate to="/app/start" replace />
   }
 
+  const plan =
+    usage &&
+    `Free plan: ${usage.projectCount} of ${plural(usage.projectLimit, "project")}`
   const atLimit = !!usage && usage.projectCount >= usage.projectLimit
-  const plan = usage && !atLimit && (
-    <p className="text-sm text-muted-foreground">
-      Free plan: {usage.projectCount} of {plural(usage.projectLimit, "project")}
-    </p>
-  )
   const newProject = (
     <NewProject
-      limitReason={
-        atLimit
-          ? `Free plan: ${usage.projectCount} of ${plural(usage.projectLimit, "project")}. Delete one to start another.`
-          : null
-      }
+      line={atLimit ? `${plan}. Delete one to start another.` : plan}
+      atLimit={atLimit}
     />
   )
 
@@ -55,10 +50,7 @@ function ProjectsPage() {
       <div className="flex flex-col gap-6">
         <h1 className="text-heading-1">Projects</h1>
         {newProject}
-        <div className="flex flex-col gap-3">
-          <ProjectList projects={items} />
-          {plan}
-        </div>
+        <ProjectList projects={items} />
       </div>
     )
   }
@@ -75,7 +67,6 @@ function ProjectsPage() {
           Your projects
         </h2>
         {items.length > 0 ? <ProjectList projects={items} /> : <NoOwnProject />}
-        {plan}
       </section>
       <section
         aria-labelledby="shared-projects"
@@ -113,29 +104,37 @@ function ProjectList({
   )
 }
 
-// Disabled at the limit; while usage is loading or unavailable it stays enabled and the server enforces it.
-function NewProject({ limitReason }: { limitReason: string | null }) {
-  if (limitReason) {
-    return (
-      <div className="flex flex-col gap-2">
+// Disabled at the limit; while usage is loading or unavailable it stays enabled, with no
+// plan line, and the server enforces it. aria-disabled keeps it focusable so the reason is read.
+function NewProject({
+  line,
+  atLimit,
+}: {
+  line: string | undefined
+  atLimit: boolean
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      {atLimit ? (
         <Button
           size="lg"
-          disabled
+          aria-disabled="true"
           aria-describedby="project-limit"
-          className="w-full sm:w-auto sm:self-start"
+          className="w-full aria-disabled:pointer-events-none aria-disabled:bg-muted aria-disabled:text-subtle-foreground sm:w-auto sm:self-start"
         >
           New project
         </Button>
+      ) : (
+        <Button asChild size="lg" className="w-full sm:w-auto sm:self-start">
+          <Link to="/app/start">New project</Link>
+        </Button>
+      )}
+      {line && (
         <p id="project-limit" className="text-sm text-muted-foreground">
-          {limitReason}
+          {line}
         </p>
-      </div>
-    )
-  }
-  return (
-    <Button asChild size="lg" className="w-full sm:w-auto sm:self-start">
-      <Link to="/app/start">New project</Link>
-    </Button>
+      )}
+    </div>
   )
 }
 

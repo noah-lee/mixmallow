@@ -152,6 +152,9 @@ test('at the project limit', async ({ page, context }) => {
   await expect(button).toHaveAccessibleDescription(
     'Free plan: 3 of 3 projects. Delete one to start another.',
   );
+  // Focusable, so the reason is announced on Tab.
+  await button.focus();
+  await expect(button).toBeFocused();
   await expect(newProject(page)).toHaveCount(0);
   await expect(
     page.getByText('Free plan: 3 of 3 projects', { exact: true }),
@@ -240,9 +243,11 @@ test('shared with you', async ({ page, context }) => {
   await expect(own.getByRole('listitem')).toContainText(
     'Midnight Drive3 versions · Created Oct 3',
   );
+  // The plan line sits under the New project button, above both sections.
   await expect(
-    own.getByText('Free plan: 1 of 3 projects', { exact: true }),
+    page.getByText('Free plan: 1 of 3 projects', { exact: true }),
   ).toBeVisible();
+  await expect(own.getByText(/Free plan:/)).toHaveCount(0);
 
   const shared = section(page, 'Shared with you');
   await expect(shared.getByRole('listitem')).toHaveCount(1);
@@ -261,9 +266,7 @@ test('only shared projects', async ({ page, context }) => {
   await expect(own.getByRole('listitem')).toHaveCount(0);
   await expect(own).toContainText("You don't have a project yet");
   await expect(newProject(page)).toHaveCount(0);
-  await expect(
-    own.getByText('Free plan: 0 of 3 projects', { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText(/Free plan:/)).toHaveCount(0);
   await expect(
     section(page, 'Shared with you').getByRole('listitem'),
   ).toContainText('Glass Hours');
