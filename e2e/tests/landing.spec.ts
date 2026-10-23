@@ -17,7 +17,7 @@ test.afterAll(async () => {
   await app.close();
 });
 
-// A new user per test, since the free plan allows one project.
+// A new user per test, so projects don't carry over between tests.
 async function newUser() {
   const id = crypto.randomUUID();
   return signedInUser(app, {
@@ -62,7 +62,7 @@ test.describe('signed out', () => {
       ).toBeVisible();
     }
     await expect(
-      page.getByText('Free: 1 project, 100 MB of mixes'),
+      page.getByText('Free: 3 projects, 500 MB of mixes'),
     ).toBeVisible();
     await expect(
       page.getByRole('img', { name: /waveform with notes/ }),

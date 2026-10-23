@@ -1,6 +1,7 @@
 import {
   type AuthProvider,
   authProviderSchema,
+  PLANS,
   returnPathSchema,
 } from "@repo/shared/schemas"
 import { createFileRoute, Link, redirect } from "@tanstack/react-router"
@@ -13,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { authProviderLabels, meQueryOptions, useMe } from "@/features/auth/api"
 import { SignInButton } from "@/features/auth/sign-in-button"
 import { WaveformIllustration } from "@/features/landing/waveform-illustration"
+import { formatBytes, plural } from "@/lib/format"
 import { site } from "@/lib/site"
 import { cn } from "@/lib/utils"
 
@@ -129,7 +131,8 @@ function Landing() {
               )}
             </div>
             <p className="text-caption text-muted-foreground">
-              Free: 1 project, 100 MB of mixes
+              Free: {plural(PLANS.free.projectLimit, "project")},{" "}
+              {formatBytes(PLANS.free.storageLimitBytes)} of mixes
             </p>
           </div>
         </div>
