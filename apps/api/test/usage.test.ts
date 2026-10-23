@@ -82,6 +82,19 @@ describe('GET /api/usage', () => {
     });
   });
 
+  it("counts a collaborator's upload toward the owner, not the collaborator", async () => {
+    const { owner, collaborator, project } = await shareProject(app);
+    await createTrack(app.db, {
+      userId: collaborator.user.id,
+      projectId: project.id,
+      sizeBytes: 9 * MB,
+    });
+    const own = await getUsage(owner.cookies);
+    expect(own.json()).toMatchObject({ storageUsedBytes: 12 * MB });
+    const theirs = await getUsage(collaborator.cookies);
+    expect(theirs.json()).toMatchObject({ storageUsedBytes: 0 });
+  });
+
   it('leaves previews out of storage used and the storage limit', async () => {
     const session = await createTestSession(app);
     const project = await createProject(app.db, { userId: session.user.id });

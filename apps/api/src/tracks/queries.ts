@@ -1,6 +1,7 @@
 import { type Database, type Transaction, tracks } from '@repo/db';
 import {
   audioFormatSchema,
+  type Person,
   type TrackDetail,
   type TrackSummary,
 } from '@repo/shared/schemas';
@@ -25,6 +26,7 @@ export const trackSummaryFields = {
   updatedAt: tracks.updatedAt,
   noteCount: noteCount(),
   doneNoteCount: noteCount(true),
+  uploader: sql<Person>`(select json_build_object('id', u.id, 'name', u.name, 'picture', u.picture) from users u where u.id = "tracks"."user_id")`,
 };
 
 type TrackSummaryRow = Omit<

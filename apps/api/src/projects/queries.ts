@@ -7,7 +7,12 @@ import {
   uploads,
   users,
 } from '@repo/db';
-import type { Landing, Project } from '@repo/shared/schemas';
+import {
+  type Landing,
+  MB,
+  type Project,
+  STORAGE_LIMIT_BYTES,
+} from '@repo/shared/schemas';
 import { and, desc, eq, isNotNull, or, type SQL, sql } from 'drizzle-orm';
 
 // Plain SQL with an explicit outer reference: inside a subquery Drizzle renders columns
@@ -23,6 +28,8 @@ const projectFields = {
     version: number;
   } | null>`(select json_build_object('id', t.id, 'version', t.version) from tracks t where t.project_id = "projects"."id" order by t.version desc limit 1)`,
   collaboratorCount: sql<number>`(select count(*)::int from project_members m where m.project_id = "projects"."id")`,
+  // Same sum as usageFor, for the project's owner.
+  acceptsUploads: sql<boolean>`(select coalesce(sum(t.size_bytes), 0) from tracks t join projects p on p.id = t.project_id where p.user_id = "projects"."user_id") <= ${STORAGE_LIMIT_BYTES - MB}`,
   ownerId: users.id,
   ownerName: users.name,
   ownerPicture: users.picture,

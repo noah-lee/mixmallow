@@ -101,6 +101,8 @@ export const projectMembers = pgTable(
   ],
 );
 
+// user_id is the uploader (the owner or a collaborator), not necessarily the project owner;
+// storage counts against projects.user_id of the track's project.
 export const tracks = pgTable(
   'tracks',
   {

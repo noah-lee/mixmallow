@@ -1,5 +1,5 @@
 import { notes, projectMembers, projects, tracks } from '@repo/db';
-import { NAME_MAX } from '@repo/shared/schemas';
+import { MB, NAME_MAX, STORAGE_LIMIT_BYTES } from '@repo/shared/schemas';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -78,6 +78,7 @@ describe('GET /api/projects', () => {
           },
           collaboratorCount: 0,
           joinedAt: null,
+          acceptsUploads: true,
         },
       ],
       shared: [],
@@ -359,6 +360,7 @@ describe('GET /api/projects/:projectId/tracks', () => {
         updatedAt: track.updatedAt.toISOString(),
         noteCount: 3,
         doneNoteCount: 2,
+        uploader: { id: userId, name: session.user.name, picture: null },
       },
     ]);
   });
@@ -436,6 +438,90 @@ describe('shared projects', () => {
     expect(res.json().items.map((t: { version: number }) => t.version)).toEqual(
       [3, 2, 1],
     );
+  });
+
+  it('tells owner and collaborator the project accepts uploads while the owner has space', async () => {
+    const { owner, collaborator, project } = await shareProject(app);
+    for (const session of [owner, collaborator]) {
+      const res = await get(`/api/projects/${project.id}`, session);
+      expect(res.json().acceptsUploads).toBe(true);
+    }
+    const shared = await get('/api/projects', collaborator);
+    expect(shared.json().shared[0].acceptsUploads).toBe(true);
+  });
+
+  it('refuses uploads to both once the owner has less than 1 MB left, without exposing byte counts', async () => {
+    const { owner, collaborator, project } = await shareProject(app);
+    // Three 1 MB versions already; this leaves half a megabyte.
+    await createTrack(app.db, {
+      userId: owner.user.id,
+      projectId: project.id,
+      sizeBytes: STORAGE_LIMIT_BYTES - 3 * MB - MB / 2,
+    });
+    const own = await get(`/api/projects/${project.id}`, owner);
+    expect(own.json().acceptsUploads).toBe(false);
+    const res = await get(`/api/projects/${project.id}`, collaborator);
+    expect(res.json().acceptsUploads).toBe(false);
+    const listed = await get('/api/projects', collaborator);
+    expect(listed.json().shared[0].acceptsUploads).toBe(false);
+    for (const body of [res.json(), listed.json().shared[0]]) {
+      expect(Object.keys(body).sort()).toEqual(
+        [
+          'acceptsUploads',
+          'collaboratorCount',
+          'createdAt',
+          'id',
+          'joinedAt',
+          'latestTrack',
+          'name',
+          'owner',
+          'role',
+          'trackCount',
+          'updatedAt',
+        ].sort(),
+      );
+      expect(Object.keys(body.owner).sort()).toEqual(['id', 'name', 'picture']);
+    }
+  });
+
+  it('accepts uploads while exactly 1 MB is left', async () => {
+    const { owner, collaborator, project } = await shareProject(app);
+    await createTrack(app.db, {
+      userId: owner.user.id,
+      projectId: project.id,
+      sizeBytes: STORAGE_LIMIT_BYTES - 4 * MB,
+    });
+    const res = await get(`/api/projects/${project.id}`, collaborator);
+    expect(res.json().acceptsUploads).toBe(true);
+  });
+
+  it('names the uploader of each version in the list', async () => {
+    const { owner, collaborator, project } = await shareProject(app);
+    await createTrack(app.db, {
+      userId: collaborator.user.id,
+      projectId: project.id,
+    });
+    const res = await get(`/api/projects/${project.id}/tracks`, owner);
+    const uploaders = res
+      .json()
+      .items.map((t: { version: number; uploader: unknown }) => [
+        t.version,
+        t.uploader,
+      ]);
+    const maya = { id: owner.user.id, name: 'Maya', picture: null };
+    expect(uploaders).toEqual([
+      [
+        4,
+        {
+          id: collaborator.user.id,
+          name: 'Sam',
+          picture: 'https://example.com/sam.png',
+        },
+      ],
+      [3, maya],
+      [2, maya],
+      [1, maya],
+    ]);
   });
 
   it('404s the project and its versions for an outsider', async () => {

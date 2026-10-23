@@ -133,6 +133,8 @@ export const projectSchema = z.object({
   collaboratorCount: count,
   // When the caller joined; null for the owner.
   joinedAt: z.iso.datetime().nullable(),
+  // The owner has at least 1 MB of storage left. Collaborators never see byte counts.
+  acceptsUploads: z.boolean(),
 });
 
 export type Project = z.infer<typeof projectSchema>;
@@ -219,6 +221,7 @@ export const trackSummarySchema = z.object({
   updatedAt: z.iso.datetime(),
   noteCount: count,
   doneNoteCount: count,
+  uploader: personSchema,
 });
 
 export type TrackSummary = z.infer<typeof trackSummarySchema>;
