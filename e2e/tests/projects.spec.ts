@@ -112,7 +112,9 @@ test('default', async ({ page, context }) => {
   await expect(rows(page).first()).toContainText('Midnight Drive');
   await expect(rows(page).first()).toContainText('3 versions');
   await expect(rows(page).first()).toContainText('Created Oct 3');
-  await expect(page.getByText('Free plan: 1 of 1 project')).toBeVisible();
+  await expect(
+    page.getByText('Free plan: 1 of 1 project', { exact: true }),
+  ).toBeVisible();
   await captureScreenshot(page, 'projects-default');
 });
 
@@ -174,7 +176,9 @@ test('shared with you', async ({ page, context }) => {
   await expect(own.getByRole('listitem')).toContainText(
     'Midnight Drive3 versions · Created Oct 3',
   );
-  await expect(own.getByText('Free plan: 1 of 1 project')).toBeVisible();
+  await expect(
+    own.getByText('Free plan: 1 of 1 project', { exact: true }),
+  ).toBeVisible();
 
   const shared = section(page, 'Shared with you');
   await expect(shared.getByRole('listitem')).toHaveCount(1);
@@ -192,7 +196,9 @@ test('only shared projects', async ({ page, context }) => {
   const own = section(page, 'Your projects');
   await expect(own.getByRole('listitem')).toHaveCount(0);
   await expect(own).toContainText("You don't have a project yet");
-  await expect(own.getByText('Free plan: 0 of 1 project')).toBeVisible();
+  await expect(
+    own.getByText('Free plan: 0 of 1 project', { exact: true }),
+  ).toBeVisible();
   await expect(
     section(page, 'Shared with you').getByRole('listitem'),
   ).toContainText('Glass Hours');
