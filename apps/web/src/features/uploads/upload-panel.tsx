@@ -15,7 +15,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { formatBytes, formatDuration } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { UploadIllustration } from "./upload-illustration"
-import type { PreparedFile, useUpload } from "./use-upload"
+import { type PreparedFile, uploadMessages, type useUpload } from "./use-upload"
 
 const ACCEPT = Object.keys(AUDIO_FORMATS)
   .map((ext) => `.${ext}`)
@@ -121,6 +121,22 @@ export function UploadPanel({
               {row ? "Remove" : "Choose another"}
             </Button>
           </div>
+        </FileCard>
+      )
+    case "refused":
+      return (
+        <FileCard prepared={state.prepared} row={row}>
+          <Alert variant="destructive">
+            <CircleAlert />
+            <AlertTitle>{uploadMessages.refused}</AlertTitle>
+          </Alert>
+          <Button
+            variant="ghost"
+            className="w-full sm:w-auto sm:self-start"
+            onClick={upload.chooseAnother}
+          >
+            Choose another
+          </Button>
         </FileCard>
       )
   }

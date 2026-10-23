@@ -29,6 +29,8 @@ export type UploadState =
   | { status: "uploading"; prepared: PreparedFile; percent: number }
   | { status: "finishing"; prepared: PreparedFile }
   | { status: "failed"; prepared: PreparedFile }
+  // A collaborator's file the owner's storage can't take; retrying can't help.
+  | { status: "refused"; prepared: PreparedFile }
 
 export const uploadMessages = {
   format: "Use a WAV, MP3, FLAC or AAC file",
@@ -41,6 +43,8 @@ export const uploadMessages = {
     leftBytes === undefined
       ? "Not enough space. Delete a version to free some up."
       : `Not enough space: ${formatBytes(leftBytes)} left. Delete a version to free some up.`,
+  projectFull: "This project can't accept more uploads.",
+  refused: "This project can't accept this file.",
 }
 
 type Options = {
@@ -50,6 +54,8 @@ type Options = {
   // Checked before any request when known (project page); the server enforces it either way.
   spaceLeftBytes?: number
   onProjectNotFound?: () => void
+  // Uploading into someone else's project: their storage, whose numbers this user never sees.
+  collaborator?: boolean
 }
 
 type Run = { controller: AbortController }
@@ -96,6 +102,7 @@ export function useUpload({
   maxFileBytes,
   spaceLeftBytes,
   onProjectNotFound,
+  collaborator = false,
 }: Options) {
   const qc = useQueryClient()
   const navigate = useNavigate()
@@ -205,6 +212,12 @@ export function useUpload({
         }
         if (code === "storage_limit_reached") {
           pendingUploadId.current = null
+          if (collaborator) {
+            // Refreshes `acceptsUploads`, which may now disable the dropzone.
+            void qc.invalidateQueries({ queryKey: PROJECTS_QUERY_KEY })
+            setState({ status: "refused", prepared })
+            return
+          }
           // The cached amount passed the client check, so it is stale; refetch and leave it out.
           void qc.invalidateQueries({ queryKey: USAGE_QUERY_KEY })
           setState({ status: "idle", error: uploadMessages.noSpace() })
@@ -226,7 +239,7 @@ export function useUpload({
         setState({ status: "failed", prepared })
       }
     },
-    [projectId, maxFileBytes, onProjectNotFound, qc, navigate],
+    [projectId, maxFileBytes, onProjectNotFound, collaborator, qc, navigate],
   )
 
   const choose = useCallback(

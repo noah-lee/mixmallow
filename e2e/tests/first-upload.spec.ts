@@ -76,6 +76,7 @@ function completeResponse() {
       updatedAt: now,
       noteCount: 0,
       doneNoteCount: 0,
+      uploader: { id: OWNER_ID, name: 'Maya', picture: null },
       peaks: [10, 200, 120],
     },
   };
@@ -96,6 +97,7 @@ function projectList() {
         owner: { id: OWNER_ID, name: 'Maya', picture: null },
         collaboratorCount: 0,
         joinedAt: null,
+        acceptsUploads: true,
       },
     ],
     shared: [],

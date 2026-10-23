@@ -146,10 +146,12 @@ async function newUser(name: string, picture: string | null = null) {
   });
 }
 
-// Maya Chen owns "Midnight Drive"; the signed-in Sam Rivera joined it.
+// Maya Chen owns "Midnight Drive"; the signed-in Sam Rivera joined it and uploaded `mine`
+// after Maya's versions.
 async function seedShared(
   context: BrowserContext,
   versions: Version[] = SAMPLE,
+  mine: Version[] = [],
 ) {
   const owner = await newUser('Maya Chen');
   const project = await createProject(app.db, {
@@ -165,8 +167,19 @@ async function seedShared(
   });
   await context.addCookies(cookies);
   await createMember(app.db, { projectId: project.id, userId: me.id });
+  tracks.push(...(await addVersions(me.id, project.id, mine)));
   return { owner, me, project, tracks };
 }
+
+const SAM_MIX: Version = {
+  name: 'Midnight Drive — Sam mix',
+  format: 'mp3',
+  sizeBytes: Math.round(9.1 * MB),
+  durationMs: 252_000,
+  date: '2026-10-23T15:00:00Z',
+  notes: 0,
+  done: 0,
+};
 
 const projectUrl = (id: string) => `/app/projects/${id}`;
 const rows = (page: Page) => page.getByRole('region', { name: 'Versions' });
@@ -213,6 +226,7 @@ test('default', async ({ page, context }) => {
     page.getByRole('button', { name: 'Upload a new version' }),
   ).toBeEnabled();
   await expect(backLink(page)).toBeVisible();
+  await expect(page.getByText(/^Uploaded by/)).toHaveCount(0);
   await captureScreenshot(page, 'project-default');
 });
 
@@ -346,7 +360,7 @@ test.describe('storage refuses the file', () => {
 });
 
 test('uploading a new version opens it', async ({ page, context }) => {
-  const { project } = await seedProject(context);
+  const { user, project } = await seedProject(context);
   const trackId = crypto.randomUUID();
   let registerBody: unknown;
   page.on('request', (req) => {
@@ -375,6 +389,7 @@ test('uploading a new version opens it', async ({ page, context }) => {
           updatedAt: now,
           noteCount: 0,
           doneNoteCount: 0,
+          uploader: { id: user.id, name: user.name, picture: null },
           peaks: [10, 200, 120],
         },
       },
@@ -659,11 +674,13 @@ test('owner with collaborators', async ({ page, context }) => {
     route.fulfill({ contentType: 'image/svg+xml', body: AVATAR_SVG }),
   );
   const { project, tracks } = await seedProject(context);
+  const people = [];
   for (const [name, picture] of [
     ['Sam Rivera', SAM_AVATAR],
     ['Jo Park', null],
   ] as const) {
     const user = await newUser(name, picture);
+    people.push(user);
     await createMember(app.db, { projectId: project.id, userId: user.id });
     await createNote(app.db, {
       userId: user.id,
@@ -671,14 +688,26 @@ test('owner with collaborators', async ({ page, context }) => {
       timestampMs: 30_000,
     });
   }
+  await addVersions(people[0]?.id ?? '', project.id, [SAM_MIX]);
+  // A member who left keeps their version, and their name on it.
+  const gone = await newUser('Lee Hart');
+  await addVersions(gone.id, project.id, [
+    { ...SAM_MIX, name: 'Midnight Drive — Lee edit', sizeBytes: 2 * MB },
+  ]);
   await openProject(page, project.id);
+  await expect(row(page, 'v5')).toContainText('Uploaded by Lee Hart');
+  await expect(row(page, 'v4')).toContainText('Uploaded by Sam Rivera');
+  await expect(row(page, 'v3')).toContainText('Uploaded by you');
+  // The owner manages everyone's versions.
+  await expect(page.getByRole('button', { name: 'More for v4' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'More for v5' })).toBeVisible();
   // v3's own 2 notes plus one from each collaborator.
   await expect(row(page, 'v3')).toContainText('4 notes · 0 done');
   const share = page.getByRole('button', { name: 'Share', exact: true });
   await expect(share).toBeVisible();
   await expect(share.locator('[data-slot="avatar"]')).toHaveCount(2);
   await expect(share.getByText('JP')).toBeVisible();
-  await expect(page.getByText('61.6 MB of 100 MB')).toBeVisible();
+  await expect(page.getByText('72.7 MB of 100 MB')).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Project options' }),
   ).toBeVisible();
@@ -712,7 +741,7 @@ test('collaborator', async ({ page, context }) => {
   page.on('request', (req) => {
     if (req.url().endsWith('/api/usage')) askedUsage = true;
   });
-  const { project } = await seedShared(context);
+  const { project } = await seedShared(context, SAMPLE, [SAM_MIX]);
   await openProject(page, project.id);
   await expect(page.getByText('Shared by Maya Chen')).toBeVisible();
   await expect(
@@ -720,13 +749,25 @@ test('collaborator', async ({ page, context }) => {
   ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Share' })).toHaveCount(0);
   const items = rows(page).getByRole('listitem');
-  await expect(items).toHaveCount(3);
-  await expect(items.nth(0)).toContainText('2 notes · 0 done');
-  await expect(items.nth(2)).toContainText('11 notes · 11 done');
-  await expect(rows(page).getByRole('button')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /^Upload/ })).toHaveCount(0);
-  await expect(fileInput(page)).toHaveCount(0);
+  await expect(items).toHaveCount(4);
+  await expect(items.nth(0)).toContainText('Midnight Drive — Sam mix');
+  await expect(items.nth(0)).toContainText('Uploaded by you');
+  await expect(items.nth(0)).toContainText('4:12 · 9.1 MB · MP3 · Oct 23');
+  await expect(items.nth(0)).toContainText('No notes');
+  await expect(items.nth(1)).toContainText('Uploaded by Maya Chen');
+  await expect(items.nth(1)).toContainText('2 notes · 0 done');
+  await expect(items.nth(3)).toContainText('11 notes · 11 done');
+  // A menu on Sam's own version only.
+  await expect(rows(page).getByRole('button')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'More for v4' })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Upload a new version' }),
+  ).toBeEnabled();
+  await expect(
+    page.getByText('WAV, MP3, FLAC or AAC · up to 100 MB per file'),
+  ).toBeVisible();
   await expect(page.getByText(/of 100 MB/)).toHaveCount(0);
+  await expect(page.getByRole('progressbar')).toHaveCount(0);
   await expect(
     page.getByRole('button', { name: 'Project options' }),
   ).toHaveCount(0);
@@ -748,11 +789,195 @@ test('collaborator, no versions', async ({ page, context }) => {
   await openProject(page, project.id);
   await expect(page.getByText('No versions yet')).toBeVisible();
   await expect(
-    page.getByText('When Maya uploads a mix, it shows up here.'),
+    page.getByText('Upload a mix to keep working on this song.'),
   ).toBeVisible();
-  await expect(page.getByRole('button', { name: /^Upload/ })).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'Upload a version' }),
+  ).toBeEnabled();
+  await expect(page.getByText(/of 100 MB/)).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Versions' })).toBeHidden();
   await captureScreenshot(page, 'project-collaborator-no-versions');
+});
+
+test('collaborator, project full', async ({ page, context }) => {
+  const { project } = await seedShared(context, [
+    { ...SAMPLE[0], sizeBytes: Math.round(99.5 * MB) } as Version,
+  ]);
+  await openProject(page, project.id);
+  await expect(
+    page.getByRole('button', { name: 'Upload a new version' }),
+  ).toBeDisabled();
+  await expect(
+    page.getByText("This project can't accept more uploads."),
+  ).toBeVisible();
+  await expect(page.getByText(/MB of 100 MB|Free plan/)).toHaveCount(0);
+  await captureScreenshot(page, 'project-collaborator-full');
+});
+
+test.describe("the owner's storage refuses the file", () => {
+  test.use({
+    expectedConsoleError: /Failed to load resource: .*status of 403/,
+  });
+
+  test('collaborator, file too big', async ({ page, context }) => {
+    // 5 MB left of Maya's storage; the file is about 7.6 MB.
+    const { project } = await seedShared(context, [
+      { ...SAMPLE[0], sizeBytes: 95 * MB } as Version,
+    ]);
+    let puts = 0;
+    await page.route(STORAGE, (route) => {
+      puts++;
+      return route.fulfill({ status: 200, headers: CORS, body: '' });
+    });
+    const refused = page.waitForResponse(
+      (res) =>
+        res.request().method() === 'POST' &&
+        new URL(res.url()).pathname === '/api/uploads',
+    );
+    await openProject(page, project.id);
+    const big = { ...MIX, name: 'Midnight Drive — long.wav', buffer: wav(500) };
+    await fileInput(page).setInputFiles(big);
+    const res = await refused;
+    expect(res.status()).toBe(403);
+    expect(await res.json()).toEqual({ error: 'storage_limit_reached' });
+
+    const uploadRow = rows(page).getByRole('region', { name: 'Upload' });
+    await expect(
+      uploadRow.getByText("This project can't accept this file."),
+    ).toBeVisible();
+    await expect(uploadRow.getByText(big.name)).toBeVisible();
+    await expect(
+      uploadRow.getByRole('button', { name: 'Try again' }),
+    ).toHaveCount(0);
+    await expect(page.getByText(/MB left/)).toHaveCount(0);
+    expect(puts).toBe(0);
+    await captureScreenshot(page, 'project-collaborator-file-too-big');
+
+    await uploadRow.getByRole('button', { name: 'Choose another' }).click();
+    await expect(uploadRow).toBeHidden();
+    await expect(
+      page.getByRole('button', { name: 'Upload a new version' }),
+    ).toBeEnabled();
+  });
+});
+
+test('collaborator removed during an upload', async ({ page, context }) => {
+  const { project, me } = await seedShared(context);
+  await page.route(STORAGE, (route) =>
+    route.fulfill({ status: 200, headers: CORS, body: '' }),
+  );
+  // Storage never holds the file in e2e; the api answers as it does for a removed uploader.
+  await page.route('**/api/uploads/*/complete', (route) =>
+    route.fulfill({ status: 404, json: { error: 'not_found' } }),
+  );
+  await openProject(page, project.id);
+  await fileInput(page).setInputFiles(MIX);
+  const uploadRow = rows(page).getByRole('region', { name: 'Upload' });
+  await expect(uploadRow.getByText('Upload failed')).toBeVisible();
+  await captureScreenshot(page, 'project-collaborator-removed-during-upload');
+
+  await app.db
+    .delete(projectMembers)
+    .where(
+      and(
+        eq(projectMembers.projectId, project.id),
+        eq(projectMembers.userId, me.id),
+      ),
+    );
+  await page.reload();
+  await expect(
+    page.getByRole('heading', { name: "This project doesn't exist" }),
+  ).toBeVisible();
+});
+
+test('collaborator uploads a version', async ({ page, context }) => {
+  const { project, me } = await seedShared(context);
+  const trackId = crypto.randomUUID();
+  let registerBody: unknown;
+  page.on('request', (req) => {
+    if (req.method() === 'POST' && req.url().endsWith('/api/uploads')) {
+      registerBody = req.postDataJSON();
+    }
+  });
+  await page.route(STORAGE, (route) =>
+    route.fulfill({ status: 200, headers: CORS, body: '' }),
+  );
+  await page.route('**/api/uploads/*/complete', (route) => {
+    const now = new Date().toISOString();
+    return route.fulfill({
+      status: 201,
+      json: {
+        projectId: project.id,
+        track: {
+          id: trackId,
+          projectId: project.id,
+          version: 4,
+          name: 'Midnight Drive — final',
+          format: 'wav',
+          sizeBytes: MIX.buffer.length,
+          durationMs: 2000,
+          createdAt: now,
+          updatedAt: now,
+          noteCount: 0,
+          doneNoteCount: 0,
+          uploader: { id: me.id, name: me.name, picture: null },
+          peaks: [10, 200, 120],
+        },
+      },
+    });
+  });
+  await openProject(page, project.id);
+  await fileInput(page).setInputFiles(MIX);
+  await expect(page).toHaveURL(
+    `${WEB_ORIGIN}/app/projects/${project.id}/tracks/${trackId}`,
+  );
+  expect(registerBody).toMatchObject({
+    projectId: project.id,
+    fileName: MIX.name,
+  });
+});
+
+test('collaborator renames and deletes their own version', async ({
+  page,
+  context,
+}) => {
+  const { project, owner, me, tracks } = await seedShared(context, SAMPLE, [
+    SAM_MIX,
+  ]);
+  const jo = await newUser('Jo Park');
+  await createMember(app.db, { projectId: project.id, userId: jo.id });
+  const v4 = tracks[3]?.id ?? '';
+  for (const [i, userId] of [
+    owner.id,
+    owner.id,
+    jo.id,
+    jo.id,
+    me.id,
+    me.id,
+  ].entries()) {
+    await createNote(app.db, { userId, trackId: v4, timestampMs: i * 1000 });
+  }
+  await openProject(page, project.id);
+
+  await page.getByRole('button', { name: 'More for v4' }).click();
+  await page.getByRole('menuitem', { name: 'Rename' }).click();
+  const rename = page.getByRole('dialog', { name: 'Rename v4' });
+  await rename.getByLabel('Name').fill('Midnight Drive — Sam mix 2');
+  await rename.getByRole('button', { name: 'Save' }).click();
+  await expect(rename).toBeHidden();
+  await expect(row(page, 'v4')).toContainText('Midnight Drive — Sam mix 2');
+
+  await page.getByRole('button', { name: 'More for v4' }).click();
+  await page.getByRole('menuitem', { name: 'Delete' }).click();
+  const dialog = page.getByRole('alertdialog', {
+    name: 'Delete v4 and its 6 notes?',
+  });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Delete' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(rows(page).getByRole('listitem')).toHaveCount(3);
+  await expect(row(page, 'v4')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Versions' })).toBeFocused();
 });
 
 test('a removed collaborator gets not found', async ({ page, context }) => {

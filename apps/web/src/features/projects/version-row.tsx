@@ -1,9 +1,10 @@
 import type { TrackSummary } from "@repo/shared/schemas"
-import { useQueryClient } from "@tanstack/react-query"
+import { type QueryClient, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { Ellipsis, Pencil, Trash2 } from "lucide-react"
 import { useRef, useState } from "react"
 import { toast } from "sonner"
+import { PersonAvatar } from "@/components/layout/user-avatar"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -18,24 +19,32 @@ import {
   formatShortDate,
   plural,
 } from "@/lib/format"
-import { removeTrack, useDeleteTrack, useRenameTrack } from "./api"
+import { projectKey, removeTrack, useDeleteTrack, useRenameTrack } from "./api"
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog"
 import { RenameDialog, type RenameResult } from "./rename-dialog"
+
+// A 403 means this user's rights changed under the page; reload what it may show.
+const refetchProject = (qc: QueryClient, projectId: string) =>
+  qc.invalidateQueries({ queryKey: projectKey(projectId) })
 
 export function noteSummary(track: TrackSummary): string {
   if (track.noteCount === 0) return "No notes"
   return `${plural(track.noteCount, "note")} · ${track.doneNoteCount} done`
 }
 
-// `readOnly` (collaborators) drops the rename/delete menu; the row still opens the track.
+// Without `canManage` (others' versions, for a collaborator) the row has no rename/delete
+// menu but still opens the track.
 export function VersionRow({
   track,
   onDeleted,
-  readOnly = false,
+  canManage,
+  uploadedBy,
 }: {
   track: TrackSummary
   onDeleted: () => void
-  readOnly?: boolean
+  canManage: boolean
+  // Shown only on shared projects: "Uploaded by you" or "Uploaded by Sam".
+  uploadedBy?: string | undefined
 }) {
   const label = `v${track.version}`
 
@@ -51,6 +60,14 @@ export function VersionRow({
         </span>
         <span className="flex min-w-0 flex-col gap-1">
           <span className="font-semibold break-words">{track.name}</span>
+          {uploadedBy !== undefined && (
+            <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-muted-foreground">
+              <PersonAvatar person={track.uploader} size="sm" />
+              <span data-testid="version-uploader" className="truncate">
+                {uploadedBy}
+              </span>
+            </span>
+          )}
           <span className="text-sm text-muted-foreground">
             <span className="font-mono tabular-nums">
               {formatDuration(track.durationMs)}
@@ -63,7 +80,7 @@ export function VersionRow({
           </span>
         </span>
       </Link>
-      {!readOnly && (
+      {canManage && (
         <VersionMenu track={track} label={label} onDeleted={onDeleted} />
       )}
     </li>
@@ -96,6 +113,7 @@ function VersionMenu({
         void removeTrack(qc, track.projectId, track.id)
         return "gone"
       }
+      if (status === 403) void refetchProject(qc, track.projectId)
       return status === 400 ? "invalid" : "failed"
     }
   }
@@ -109,6 +127,7 @@ function VersionMenu({
           void removeTrack(qc, track.projectId, track.id)
           return
         }
+        if (httpStatus(err) === 403) void refetchProject(qc, track.projectId)
         toast.error(`Couldn't delete ${label}. Try again.`)
       },
     })
