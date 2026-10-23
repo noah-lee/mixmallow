@@ -1,3 +1,4 @@
+import { Agent } from "node:http"
 import path from "node:path"
 import tailwindcss from "@tailwindcss/vite"
 import { tanstackRouter } from "@tanstack/router-plugin/vite"
@@ -21,7 +22,12 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       proxy: {
-        "/api": `http://localhost:${PORT}`,
+        // Without an agent the proxy sends `Connection: close`, opening a socket per request;
+        // e2e runs churn through enough of them to exhaust Windows' ephemeral ports.
+        "/api": {
+          target: `http://127.0.0.1:${PORT}`,
+          agent: new Agent({ keepAlive: true }),
+        },
       },
     },
   }
