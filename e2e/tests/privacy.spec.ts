@@ -12,6 +12,7 @@ test('default', async ({ page }) => {
   for (const title of [
     'What we collect',
     'How we use it',
+    'Sharing a project',
     'Google user data',
     "Where it's stored",
     'Keeping and deleting your data',
@@ -27,6 +28,27 @@ test('default', async ({ page }) => {
   await expect(page.getByText(/takes no payments/)).toBeVisible();
   await expect(page.getByText(/Stripe/)).toHaveCount(0);
   await captureScreenshot(page, 'privacy-default');
+});
+
+test('sharing', async ({ page }) => {
+  await page.goto('/privacy');
+  const heading = page.getByRole('heading', {
+    level: 2,
+    name: 'Sharing a project',
+  });
+  await heading.scrollIntoViewIfNeeded();
+  await expect(
+    page.getByText(/Anyone who has the link can see the owner's name/),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/Your email address is never shown to other users/),
+  ).toBeVisible();
+  await expect(page.getByText(/no other .+ user can see them/)).toHaveCount(0);
+  await expect(
+    page.getByText(/to anyone with the invite link\. It isn't\s+transferred/),
+  ).toBeVisible();
+  await page.evaluate('window.scrollBy(0, -16)');
+  await captureScreenshot(page, 'privacy-sharing', { fullPage: false });
 });
 
 test('contact links open an email to the support address', async ({ page }) => {

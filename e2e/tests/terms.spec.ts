@@ -14,6 +14,7 @@ test('default', async ({ page }) => {
     'Free plan limits',
     'Your account',
     'Your music',
+    'Sharing projects',
     'Acceptable use',
     'Keep your own copies',
     'No warranty',
@@ -29,8 +30,26 @@ test('default', async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByText(/100 MB of stored audio/)).toBeVisible();
   await expect(page.getByText(/You keep all rights/)).toBeVisible();
+  await expect(
+    page.getByText('up to 10 collaborators on each project', { exact: true }),
+  ).toBeVisible();
   await expect(page.getByText(/Stripe|subscription/)).toHaveCount(0);
   await captureScreenshot(page, 'terms-default');
+});
+
+test('sharing', async ({ page }) => {
+  await page.goto('/terms');
+  await page
+    .getByRole('heading', { level: 2, name: 'Sharing projects' })
+    .scrollIntoViewIfNeeded();
+  await expect(
+    page.getByText(/you're responsible for who you invite/),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/remove a member, or reset or turn off the link/),
+  ).toBeVisible();
+  await page.evaluate('window.scrollBy(0, -16)');
+  await captureScreenshot(page, 'terms-sharing', { fullPage: false });
 });
 
 test('contact link opens an email to the support address', async ({ page }) => {

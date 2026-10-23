@@ -43,8 +43,13 @@ function Privacy() {
         </p>
         <p>
           <strong className="font-semibold">What you write.</strong> Project and
-          version names, and your notes with their timestamps and whether
-          they're marked done.
+          version names, and your notes with their timestamps, whether they're
+          marked done and who wrote them.
+        </p>
+        <p>
+          <strong className="font-semibold">Sharing.</strong> Who is a member of
+          each project you own or join, and when they joined, plus the project's
+          invite link while it's turned on.
         </p>
         <p>
           <strong className="font-semibold">Technical data.</strong> Sign-in
@@ -63,12 +68,13 @@ function Privacy() {
         <ul>
           <li>
             Your Google account details identify your account and show your name
-            and picture in the app.
+            and picture in the app, to you and to the members of your projects.
           </li>
           <li>
-            Your files, names and notes are stored only so you can play, review
-            and organise them. They're private to your account: no other{" "}
-            {site.name} user can see them.
+            Your files, names and notes are stored only so you and the members
+            of your projects can play, review and organise them. A project is
+            visible only to its owner and the people who joined it, as explained
+            below.
           </li>
           <li>
             File sizes count toward your free storage limit, shown on your
@@ -77,7 +83,28 @@ function Privacy() {
         </ul>
         <p>
           Your data isn't sold, used for advertising, or shared with anyone
-          except the service providers named on this page.
+          except the members of projects you share, as described under "Sharing
+          a project", and the service providers named on this page.
+        </p>
+      </LegalSection>
+
+      <LegalSection title="Sharing a project">
+        <p>
+          A project's owner can create an invite link. Anyone who has the link
+          can see the owner's name and profile picture and the project's name
+          before deciding to join. Nothing else about the project is shown to
+          them.
+        </p>
+        <p>
+          Members of a project (its owner and everyone who joined) can play
+          every version and see every note in it, along with each member's name
+          and profile picture. Your email address is never shown to other users.
+        </p>
+        <p>
+          The owner can reset or turn off the link at any time, which stops it
+          working, and can remove members. If you leave a project or are
+          removed, you lose access at once, but the notes you wrote stay in the
+          project with your name on them. The owner can delete them.
         </p>
       </LegalSection>
 
@@ -89,8 +116,10 @@ function Privacy() {
             Google API Services User Data Policy
           </a>
           , including the Limited Use requirements. Google account data is used
-          only to sign you in and identify your account. It isn't transferred to
-          anyone or used for advertising.
+          only to sign you in, identify your account, and show your name and
+          profile picture to the members of projects you're in and, for projects
+          you own, to anyone with the invite link. It isn't transferred to
+          anyone else or used for advertising.
         </p>
       </LegalSection>
 
@@ -109,15 +138,17 @@ function Privacy() {
 
       <LegalSection title="Keeping and deleting your data">
         <p>
-          Your data is kept while your account exists. When you delete a
-          version, its audio file and notes are deleted. When you delete a
-          project, all its versions, files and notes are deleted.
+          Your data is kept while your account exists. When the owner deletes a
+          version, its audio file and everyone's notes on it are deleted. When
+          the owner deletes a project, all its versions, files and notes are
+          deleted, and its members lose access.
         </p>
         <p>
           To delete your whole account, email <ContactLink /> from the address
-          you sign in with. Your account, files and notes will be permanently
-          deleted within 30 days. Server logs are kept for a limited time and
-          then removed.
+          you sign in with. Your account, your projects with their files, and
+          every note you wrote, including notes in other people's projects, will
+          be permanently deleted within 30 days. Server logs are kept for a
+          limited time and then removed.
         </p>
         <p>
           You can also remove {site.name}'s access at any time from your{" "}

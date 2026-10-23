@@ -1,4 +1,5 @@
 import {
+  COLLABORATOR_LIMIT,
   MAX_FILE_BYTES,
   NOTE_LIMIT_PER_TRACK,
   PROJECT_LIMIT,
@@ -30,13 +31,14 @@ function Terms() {
       <LegalSection title="The service">
         <p>
           {site.name} lets you upload versions of a track, play them back and
-          pin notes to moments in them. It's free and takes no payments.
-          Features may change or be removed over time.
+          pin notes to moments in them, on your own or with people you invite.
+          It's free and takes no payments. Features may change or be removed
+          over time.
         </p>
       </LegalSection>
 
       <LegalSection title="Free plan limits">
-        <p>Each account can have:</p>
+        <p>Each account can own:</p>
         <ul>
           <li>
             up to {PROJECT_LIMIT} {PROJECT_LIMIT === 1 ? "project" : "projects"}
@@ -47,9 +49,11 @@ function Terms() {
               `, with each file up to ${formatBytes(MAX_FILE_BYTES)}`}
           </li>
           <li>up to {NOTE_LIMIT_PER_TRACK} notes on each version</li>
+          <li>up to {COLLABORATOR_LIMIT} collaborators on each project</li>
         </ul>
         <p>
-          Your account page shows how much space you've used. Deleting a version
+          Projects you join count toward their owner's limits, not yours. Your
+          account page shows how much space you've used. Deleting a version
           frees its space. These limits may change, and any change will be shown
           here.
         </p>
@@ -70,13 +74,29 @@ function Terms() {
         </p>
         <p>
           By uploading a file, you give {site.name} permission only to store it,
-          show its waveform, and play it back to you. It isn't shared, published
-          or used for anything else, and the permission ends when you delete
-          that version, its project or your account.
+          show its waveform, and play it back to you and the members of its
+          project. It isn't published or used for anything else, and the
+          permission ends when you delete that version, its project or your
+          account.
         </p>
         <p>
           Only upload audio you own or have permission to use. You're
           responsible for what you upload.
+        </p>
+      </LegalSection>
+
+      <LegalSection title="Sharing projects">
+        <p>
+          As a project's owner, you decide who gets access. Anyone who has your
+          invite link can join until the project is full, so share it only with
+          people you trust, and you're responsible for who you invite. You can
+          remove a member, or reset or turn off the link so it stops working, at
+          any time.
+        </p>
+        <p>
+          Members can listen to every version and add notes, but only the owner
+          can upload, rename or delete. Notes a member wrote stay in the project
+          after they leave or are removed.
         </p>
       </LegalSection>
 
@@ -87,7 +107,8 @@ function Terms() {
             upload anything you don't have the rights to, or anything unlawful
           </li>
           <li>
-            use {site.name} to share or distribute files with other people
+            use {site.name} to publish or distribute files beyond the people
+            you're working with
           </li>
           <li>
             try to access other users' data or break the service's security
