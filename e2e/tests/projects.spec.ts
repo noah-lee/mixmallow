@@ -113,9 +113,73 @@ test('default', async ({ page, context }) => {
   await expect(rows(page).first()).toContainText('3 versions');
   await expect(rows(page).first()).toContainText('Created Oct 3');
   await expect(
-    page.getByText('Free plan: 1 of 1 project', { exact: true }),
+    page.getByText('Free plan: 1 of 3 projects', { exact: true }),
   ).toBeVisible();
   await captureScreenshot(page, 'projects-default');
+});
+
+const newProject = (page: Page) =>
+  page.getByRole('main').getByRole('link', { name: 'New project' });
+
+test('room for a new project', async ({ page, context }) => {
+  const { user } = await seed(context);
+  await seedProject(user.id, 1, 'Late Bloom');
+  await openProjects(page);
+  await expect(rows(page)).toHaveCount(2);
+  await expect(newProject(page)).toBeEnabled();
+  await expect(
+    page.getByText('Free plan: 2 of 3 projects', { exact: true }),
+  ).toBeVisible();
+  await captureScreenshot(page, 'projects-new-project');
+
+  await newProject(page).click();
+  await expect(page).toHaveURL(`${WEB_ORIGIN}/app/start`);
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Start a new project' }),
+  ).toBeVisible();
+  await page.getByRole('main').getByRole('link', { name: 'Projects' }).click();
+  await expect(page).toHaveURL(`${WEB_ORIGIN}/app/projects`);
+});
+
+test('at the project limit', async ({ page, context }) => {
+  const { user } = await seed(context);
+  await seedProject(user.id, 1, 'Late Bloom');
+  await seedProject(user.id, 2, 'Paper Moon');
+  await openProjects(page);
+  await expect(rows(page)).toHaveCount(3);
+  const button = page.getByRole('button', { name: 'New project' });
+  await expect(button).toBeDisabled();
+  await expect(button).toHaveAccessibleDescription(
+    'Free plan: 3 of 3 projects. Delete one to start another.',
+  );
+  await expect(newProject(page)).toHaveCount(0);
+  await expect(
+    page.getByText('Free plan: 3 of 3 projects', { exact: true }),
+  ).toHaveCount(0);
+  await captureScreenshot(page, 'projects-at-limit');
+
+  await page.goto('/app/start');
+  await expect(page).toHaveURL(`${WEB_ORIGIN}/app/projects`);
+});
+
+test('deleting a project at the limit frees the button', async ({
+  page,
+  context,
+}) => {
+  const { user } = await seed(context);
+  await seedProject(user.id, 1, 'Late Bloom');
+  const extra = await seedProject(user.id, 1, 'Paper Moon');
+  await openProjects(page);
+  await expect(
+    page.getByRole('button', { name: 'New project' }),
+  ).toBeDisabled();
+  const res = await page.request.delete(`/api/projects/${extra.id}`);
+  expect(res.ok()).toBe(true);
+  await page.reload();
+  await expect(newProject(page)).toBeEnabled();
+  await expect(
+    page.getByText('Free plan: 2 of 3 projects', { exact: true }),
+  ).toBeVisible();
 });
 
 test('opening a project goes to its page', async ({ page, context }) => {
@@ -177,7 +241,7 @@ test('shared with you', async ({ page, context }) => {
     'Midnight Drive3 versions · Created Oct 3',
   );
   await expect(
-    own.getByText('Free plan: 1 of 1 project', { exact: true }),
+    own.getByText('Free plan: 1 of 3 projects', { exact: true }),
   ).toBeVisible();
 
   const shared = section(page, 'Shared with you');
@@ -196,8 +260,9 @@ test('only shared projects', async ({ page, context }) => {
   const own = section(page, 'Your projects');
   await expect(own.getByRole('listitem')).toHaveCount(0);
   await expect(own).toContainText("You don't have a project yet");
+  await expect(newProject(page)).toHaveCount(0);
   await expect(
-    own.getByText('Free plan: 0 of 1 project', { exact: true }),
+    own.getByText('Free plan: 0 of 3 projects', { exact: true }),
   ).toBeVisible();
   await expect(
     section(page, 'Shared with you').getByRole('listitem'),
@@ -285,6 +350,7 @@ test.describe('a request fails', () => {
     await expect.poll(() => failures).toBe(3);
     await expect(page.getByText(/Free plan:/)).toHaveCount(0);
     await expect(page.getByRole('alert')).toHaveCount(0);
+    await expect(newProject(page)).toBeEnabled();
     await captureScreenshot(page, 'projects-usage-unavailable');
   });
 });

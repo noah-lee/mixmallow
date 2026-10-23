@@ -33,10 +33,20 @@ function ProjectsPage() {
     return <Navigate to="/app/start" replace />
   }
 
-  const plan = usage && (
+  const atLimit = !!usage && usage.projectCount >= usage.projectLimit
+  const plan = usage && !atLimit && (
     <p className="text-sm text-muted-foreground">
       Free plan: {usage.projectCount} of {plural(usage.projectLimit, "project")}
     </p>
+  )
+  const newProject = (
+    <NewProject
+      limitReason={
+        atLimit
+          ? `Free plan: ${usage.projectCount} of ${plural(usage.projectLimit, "project")}. Delete one to start another.`
+          : null
+      }
+    />
   )
 
   // Without shared projects the page keeps its single, untitled list.
@@ -44,6 +54,7 @@ function ProjectsPage() {
     return (
       <div className="flex flex-col gap-6">
         <h1 className="text-heading-1">Projects</h1>
+        {newProject}
         <div className="flex flex-col gap-3">
           <ProjectList projects={items} />
           {plan}
@@ -55,6 +66,7 @@ function ProjectsPage() {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-heading-1">Projects</h1>
+      {items.length > 0 && newProject}
       <section aria-labelledby="own-projects" className="flex flex-col gap-3">
         <h2
           id="own-projects"
@@ -98,6 +110,32 @@ function ProjectList({
         />
       ))}
     </ul>
+  )
+}
+
+// Disabled at the limit; while usage is loading or unavailable it stays enabled and the server enforces it.
+function NewProject({ limitReason }: { limitReason: string | null }) {
+  if (limitReason) {
+    return (
+      <div className="flex flex-col gap-2">
+        <Button
+          size="lg"
+          disabled
+          aria-describedby="project-limit"
+          className="w-full sm:w-auto sm:self-start"
+        >
+          New project
+        </Button>
+        <p id="project-limit" className="text-sm text-muted-foreground">
+          {limitReason}
+        </p>
+      </div>
+    )
+  }
+  return (
+    <Button asChild size="lg" className="w-full sm:w-auto sm:self-start">
+      <Link to="/app/start">New project</Link>
+    </Button>
   )
 }
 
