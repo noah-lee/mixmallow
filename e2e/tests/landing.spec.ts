@@ -55,7 +55,7 @@ test.describe('signed out', () => {
     for (const title of [
       'Every bounce is a version',
       'Pin notes to the exact moment',
-      'Just for you — nothing is shared',
+      'Private until you invite someone',
     ]) {
       await expect(
         page.getByRole('heading', { level: 2, name: title }),
