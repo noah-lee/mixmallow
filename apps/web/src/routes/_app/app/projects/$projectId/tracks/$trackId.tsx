@@ -30,6 +30,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ShareButton } from "@/features/members/share-sheet"
 import {
   PROJECTS_QUERY_KEY,
   projectQueryOptions,
@@ -355,6 +356,7 @@ function TrackView({
             {track.name}
           </h1>
         </div>
+        {project && <ShareButton project={project} onGone={onGone} />}
         <TrackMenu
           track={track}
           noteCount={notes.length}

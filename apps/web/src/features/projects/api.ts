@@ -25,7 +25,7 @@ export const projectsQueryOptions = queryOptions({
   staleTime: 30 * 1000,
 })
 
-const projectKey = (projectId: string) =>
+export const projectKey = (projectId: string) =>
   [...PROJECTS_QUERY_KEY, projectId] as const
 const tracksKey = (projectId: string) =>
   [...projectKey(projectId), "tracks"] as const

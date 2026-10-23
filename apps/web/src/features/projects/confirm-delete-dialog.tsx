@@ -14,6 +14,8 @@ export function ConfirmDeleteDialog({
   open,
   onOpenChange,
   title,
+  description = "This can't be undone.",
+  confirmLabel = "Delete",
   pending,
   onConfirm,
   returnFocus,
@@ -21,6 +23,8 @@ export function ConfirmDeleteDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
   title: string
+  description?: string
+  confirmLabel?: string
   pending: boolean
   onConfirm: () => void
   // Opened from a menu item, so Radix has no trigger to return focus to.
@@ -42,7 +46,7 @@ export function ConfirmDeleteDialog({
       >
         <AlertDialogHeader>
           <AlertDialogTitle className="text-pretty">{title}</AlertDialogTitle>
-          <AlertDialogDescription>This can't be undone.</AlertDialogDescription>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel variant="ghost" disabled={pending}>
@@ -51,7 +55,7 @@ export function ConfirmDeleteDialog({
           {/* A plain button, not AlertDialogAction, so the dialog stays open until the request settles. */}
           <Button variant="destructive" disabled={pending} onClick={onConfirm}>
             {pending && <Spinner data-icon="inline-start" />}
-            Delete
+            {confirmLabel}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

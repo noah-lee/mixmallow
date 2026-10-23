@@ -19,6 +19,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ShareButton } from "@/features/members/share-sheet"
 import {
   forgetProject,
   PROJECTS_QUERY_KEY,
@@ -157,6 +158,7 @@ function Project({ projectId }: { projectId: string }) {
             <Skeleton className="h-9 w-full rounded-full sm:w-52" />
           )}
         </div>
+        <ShareButton project={project.data} onGone={onProjectNotFound} />
         <ProjectMenu
           name={project.data.name}
           trackCount={project.data.trackCount}
