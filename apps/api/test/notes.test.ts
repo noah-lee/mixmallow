@@ -8,7 +8,12 @@ import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp } from './helpers/app.ts';
-import { createNote, createProject, createTrack } from './helpers/factories.ts';
+import {
+  createMember,
+  createNote,
+  createProject,
+  createTrack,
+} from './helpers/factories.ts';
 import { createTestSession, type TestSession } from './helpers/session.ts';
 import { shareProject } from './helpers/sharing.ts';
 
@@ -441,7 +446,10 @@ describe('notes on a shared project', () => {
 
   it("forbids a collaborator to change or delete the owner's note", async () => {
     const { collaborator, mayaNote } = await shared();
-    for (const payload of [{ text: 'Hijacked' }, { done: true }]) {
+    for (const payload of [
+      { text: 'Hijacked' },
+      { done: true, text: 'Hijacked' },
+    ]) {
       const res = await patchNote(mayaNote.id, payload, collaborator.cookies);
       expect(res.statusCode).toBe(403);
       expect(res.json()).toEqual({ error: 'forbidden' });
@@ -483,6 +491,61 @@ describe('notes on a shared project', () => {
     const removed = await deleteNote(note.id, owner.cookies);
     expect(removed.statusCode).toBe(204);
     expect(await noteRow(note.id)).toBeUndefined();
+  });
+
+  it("lets a collaborator tick and untick the owner's note for everyone", async () => {
+    const { owner, collaborator, track, mayaNote } = await shared();
+    const ticked = await patchNote(
+      mayaNote.id,
+      { done: true },
+      collaborator.cookies,
+    );
+    expect(ticked.statusCode).toBe(200);
+    expect(ticked.json()).toMatchObject({
+      done: true,
+      text: "Maya's note",
+      author: { id: owner.user.id },
+    });
+    let seen = await listNotes(track.id, owner.cookies);
+    expect(seen.json().items[0]).toMatchObject({ id: mayaNote.id, done: true });
+
+    const unticked = await patchNote(
+      mayaNote.id,
+      { done: false },
+      collaborator.cookies,
+    );
+    expect(unticked.statusCode).toBe(200);
+    seen = await listNotes(track.id, owner.cookies);
+    expect(seen.json().items[0]).toMatchObject({ done: false });
+  });
+
+  it("forbids a collaborator to move the owner's note, alone or with done", async () => {
+    const { collaborator, mayaNote } = await shared();
+    for (const payload of [
+      { timestampMs: 1 },
+      { done: true, timestampMs: 1 },
+    ]) {
+      const res = await patchNote(mayaNote.id, payload, collaborator.cookies);
+      expect(res.statusCode).toBe(403);
+      expect(res.json()).toEqual({ error: 'forbidden' });
+    }
+    expect(await noteRow(mayaNote.id)).toMatchObject({
+      timestampMs: mayaNote.timestampMs,
+      done: false,
+    });
+  });
+
+  it("lets one collaborator tick another collaborator's note", async () => {
+    const { collaborator, project, track } = await shared();
+    const jo = await createTestSession(app, { name: 'Jo' });
+    await createMember(app.db, { projectId: project.id, userId: jo.user.id });
+    const note = await ownNote(collaborator, track.id);
+    const res = await patchNote(note.id, { done: true }, jo.cookies);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      done: true,
+      author: { id: collaborator.user.id },
+    });
   });
 
   it('counts notes from every author toward the per-track limit', async () => {

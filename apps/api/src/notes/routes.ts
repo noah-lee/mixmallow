@@ -118,7 +118,7 @@ export const noteRoutes: FastifyPluginAsyncZod = async (app) => {
     },
   );
 
-  // Text and time belong to the author; done can also be set by the project owner.
+  // Text and time belong to the author; any member may tick done.
   app.patch(
     '/notes/:noteId',
     {
@@ -131,13 +131,9 @@ export const noteRoutes: FastifyPluginAsyncZod = async (app) => {
       const result = await app.db.transaction(async (tx) => {
         const access = await noteAccess(tx, userId, noteId, { lock: true });
         if (!access) return { status: 404, body: notFound } as const;
-        const { timestampMs, text, done } = req.body;
-        const isAuthor = access.authorId === userId;
+        const { timestampMs, text } = req.body;
         const editsContent = text !== undefined || timestampMs !== undefined;
-        if (
-          (editsContent && !isAuthor) ||
-          (done !== undefined && !isAuthor && access.role !== 'owner')
-        ) {
+        if (editsContent && access.authorId !== userId) {
           return { status: 403, body: forbidden } as const;
         }
         if (timestampMs !== undefined && timestampMs > access.durationMs) {
