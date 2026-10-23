@@ -27,11 +27,56 @@ export function noteSummary(track: TrackSummary): string {
   return `${plural(track.noteCount, "note")} · ${track.doneNoteCount} done`
 }
 
+// `readOnly` (collaborators) drops the rename/delete menu; the row still opens the track.
 export function VersionRow({
   track,
   onDeleted,
+  readOnly = false,
 }: {
   track: TrackSummary
+  onDeleted: () => void
+  readOnly?: boolean
+}) {
+  const label = `v${track.version}`
+
+  return (
+    <li className="flex items-start rounded-xl border bg-card">
+      <Link
+        to="/app/projects/$projectId/tracks/$trackId"
+        params={{ projectId: track.projectId, trackId: track.id }}
+        className="flex min-w-0 flex-1 items-start gap-3 rounded-xl p-4 outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <span className="mt-0.5 shrink-0 rounded-full bg-muted px-2.5 py-0.5 font-mono text-time font-semibold tabular-nums">
+          {label}
+        </span>
+        <span className="flex min-w-0 flex-col gap-1">
+          <span className="font-semibold break-words">{track.name}</span>
+          <span className="text-sm text-muted-foreground">
+            <span className="font-mono tabular-nums">
+              {formatDuration(track.durationMs)}
+            </span>{" "}
+            · {formatBytes(track.sizeBytes)} · {track.format.toUpperCase()} ·{" "}
+            {formatShortDate(track.createdAt)}
+          </span>
+          <span className="text-sm text-muted-foreground">
+            {noteSummary(track)}
+          </span>
+        </span>
+      </Link>
+      {!readOnly && (
+        <VersionMenu track={track} label={label} onDeleted={onDeleted} />
+      )}
+    </li>
+  )
+}
+
+function VersionMenu({
+  track,
+  label,
+  onDeleted,
+}: {
+  track: TrackSummary
+  label: string
   onDeleted: () => void
 }) {
   const qc = useQueryClient()
@@ -40,7 +85,6 @@ export function VersionRow({
   const [renaming, setRenaming] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const menuRef = useRef<HTMLButtonElement>(null)
-  const label = `v${track.version}`
 
   const save = async (name: string): Promise<RenameResult> => {
     try {
@@ -70,29 +114,7 @@ export function VersionRow({
     })
 
   return (
-    <li className="flex items-start rounded-xl border bg-card">
-      <Link
-        to="/app/projects/$projectId/tracks/$trackId"
-        params={{ projectId: track.projectId, trackId: track.id }}
-        className="flex min-w-0 flex-1 items-start gap-3 rounded-xl p-4 outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <span className="mt-0.5 shrink-0 rounded-full bg-muted px-2.5 py-0.5 font-mono text-time font-semibold tabular-nums">
-          {label}
-        </span>
-        <span className="flex min-w-0 flex-col gap-1">
-          <span className="font-semibold break-words">{track.name}</span>
-          <span className="text-sm text-muted-foreground">
-            <span className="font-mono tabular-nums">
-              {formatDuration(track.durationMs)}
-            </span>{" "}
-            · {formatBytes(track.sizeBytes)} · {track.format.toUpperCase()} ·{" "}
-            {formatShortDate(track.createdAt)}
-          </span>
-          <span className="text-sm text-muted-foreground">
-            {noteSummary(track)}
-          </span>
-        </span>
-      </Link>
+    <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -147,6 +169,6 @@ export function VersionRow({
           menuRef.current ? menuRef.current.focus() : onDeleted()
         }
       />
-    </li>
+    </>
   )
 }

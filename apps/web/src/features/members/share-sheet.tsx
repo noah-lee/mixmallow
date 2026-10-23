@@ -1,6 +1,7 @@
 import {
   COLLABORATOR_LIMIT,
   type Member,
+  type Person,
   type Project,
 } from "@repo/shared/schemas"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -10,6 +11,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { PersonAvatar } from "@/components/layout/user-avatar"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { AvatarGroup } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -52,12 +54,15 @@ type ProjectRef = Pick<Project, "id" | "name" | "role">
 
 // "Share" for the owner, "Members" for a collaborator. `onGone` is the page's not-found
 // state: the project was deleted or the caller was removed while the sheet was open.
+// `people` (collaborators) replace the icon with stacked avatars.
 export function ShareButton({
   project,
   onGone,
+  people = [],
 }: {
   project: ProjectRef
   onGone: () => void
+  people?: Person[]
 }) {
   const [open, setOpen] = useState(false)
   const owner = project.role === "owner"
@@ -68,7 +73,19 @@ export function ShareButton({
         className="h-11 shrink-0 px-4"
         onClick={() => setOpen(true)}
       >
-        {owner ? (
+        {people.length > 0 ? (
+          // Decorative: the button's name stays "Share"; the sheet lists who they are.
+          <AvatarGroup aria-hidden className="-ml-1.5">
+            {people.slice(0, 3).map((person, i) => (
+              <PersonAvatar
+                key={person.id}
+                person={person}
+                size="sm"
+                className={cn(i === 2 && "hidden sm:flex")}
+              />
+            ))}
+          </AvatarGroup>
+        ) : owner ? (
           <Share2 data-icon="inline-start" />
         ) : (
           <Users data-icon="inline-start" />

@@ -1,8 +1,21 @@
-import { MAX_FILE_BYTES, MB, projectIdParamsSchema } from "@repo/shared/schemas"
+import {
+  MAX_FILE_BYTES,
+  MB,
+  type Project as ProjectData,
+  projectIdParamsSchema,
+  type TrackSummary,
+} from "@repo/shared/schemas"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
-import { ArrowLeft, CircleAlert, Ellipsis, Pencil, Trash2 } from "lucide-react"
-import { useCallback, useEffect, useRef, useState } from "react"
+import {
+  ArrowLeft,
+  AudioLines,
+  CircleAlert,
+  Ellipsis,
+  Pencil,
+  Trash2,
+} from "lucide-react"
+import { type RefObject, useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -16,9 +29,12 @@ import {
   Empty,
   EmptyDescription,
   EmptyHeader,
+  EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
 import { Skeleton } from "@/components/ui/skeleton"
+import { membersQueryOptions } from "@/features/members/api"
+import { personFirstName, personName } from "@/features/members/person-name"
 import { ShareButton } from "@/features/members/share-sheet"
 import {
   forgetProject,
@@ -36,7 +52,7 @@ import {
 import { VersionRow } from "@/features/projects/version-row"
 import { Dropzone, UploadPanel } from "@/features/uploads/upload-panel"
 import { useUpload } from "@/features/uploads/use-upload"
-import { useUsage } from "@/features/usage/api"
+import { usageQueryOptions } from "@/features/usage/api"
 import { UsageMeter } from "@/features/usage/usage-meter"
 import { httpStatus } from "@/lib/api"
 import { formatBytes, plural } from "@/lib/format"
@@ -59,7 +75,13 @@ function Project({ projectId }: { projectId: string }) {
   const navigate = useNavigate()
   const project = useQuery(projectQueryOptions(projectId))
   const tracks = useQuery(trackListQueryOptions(projectId))
-  const usage = useUsage().data
+  const owner = project.data?.role === "owner"
+  const usage = useQuery({ ...usageQueryOptions, enabled: owner }).data
+  // Only for the avatars beside Share.
+  const members = useQuery({
+    ...membersQueryOptions(projectId),
+    enabled: owner && (project.data?.collaboratorCount ?? 0) > 0,
+  })
   const [gone, setGone] = useState(false)
   const titleRef = useRef<HTMLHeadingElement>(null)
   const versionsRef = useRef<HTMLHeadingElement>(null)
@@ -91,7 +113,8 @@ function Project({ projectId }: { projectId: string }) {
   const notFound =
     gone ||
     httpStatus(project.error) === 404 ||
-    httpStatus(tracks.error) === 404
+    httpStatus(tracks.error) === 404 ||
+    httpStatus(members.error) === 404
   // Otherwise /app may still route "Go to my project" back here from the cached list.
   useEffect(() => {
     if (notFound) {
@@ -112,6 +135,18 @@ function Project({ projectId }: { projectId: string }) {
     )
   }
   if (!project.data || !tracks.data) return <ProjectSkeleton />
+  if (project.data.role === "collaborator") {
+    return (
+      <SharedProject
+        project={project.data}
+        versions={tracks.data}
+        onGone={onProjectNotFound}
+        onDeleted={focusAfterDelete}
+        titleRef={titleRef}
+        versionsRef={versionsRef}
+      />
+    )
+  }
 
   const versions = tracks.data
   const idle = upload.state.status === "idle"
@@ -140,45 +175,56 @@ function Project({ projectId }: { projectId: string }) {
   return (
     <div className="flex flex-col gap-6">
       <BackToProjects />
-      <div className="flex items-start gap-2">
-        <div className="flex min-w-0 flex-1 flex-col gap-3">
+      <div className="flex flex-col gap-3">
+        <div className="flex items-start gap-2">
           <h1
             ref={titleRef}
             tabIndex={-1}
-            className="text-heading-1 break-words outline-none"
+            className="min-w-0 flex-1 text-heading-1 break-words outline-none"
           >
             {project.data.name}
           </h1>
-          {usage ? (
-            <UsageMeter
-              usedBytes={usage.storageUsedBytes}
-              limitBytes={usage.storageLimitBytes}
-            />
-          ) : (
-            <Skeleton className="h-9 w-full rounded-full sm:w-52" />
-          )}
+          <ShareButton
+            project={project.data}
+            onGone={onProjectNotFound}
+            people={
+              project.data.collaboratorCount > 0
+                ? (members.data?.items.filter(
+                    (m) => m.role === "collaborator",
+                  ) ?? [])
+                : []
+            }
+          />
+          <ProjectMenu
+            name={project.data.name}
+            trackCount={project.data.trackCount}
+            noteCount={versions.reduce((sum, t) => sum + t.noteCount, 0)}
+            projectId={projectId}
+            deleting={deleteProject.isPending}
+            onDelete={() =>
+              deleteProject.mutate(undefined, {
+                onSuccess: () => void leave(),
+                onError: (err) => {
+                  if (httpStatus(err) === 404) {
+                    void leave()
+                    return
+                  }
+                  toast.error("Couldn't delete the project. Try again.")
+                },
+              })
+            }
+            onGone={() => setGone(true)}
+          />
         </div>
-        <ShareButton project={project.data} onGone={onProjectNotFound} />
-        <ProjectMenu
-          name={project.data.name}
-          trackCount={project.data.trackCount}
-          noteCount={versions.reduce((sum, t) => sum + t.noteCount, 0)}
-          projectId={projectId}
-          deleting={deleteProject.isPending}
-          onDelete={() =>
-            deleteProject.mutate(undefined, {
-              onSuccess: () => void leave(),
-              onError: (err) => {
-                if (httpStatus(err) === 404) {
-                  void leave()
-                  return
-                }
-                toast.error("Couldn't delete the project. Try again.")
-              },
-            })
-          }
-          onGone={() => setGone(true)}
-        />
+        {/* Own row: beside Share and the menu it has too little room on phones. */}
+        {usage ? (
+          <UsageMeter
+            usedBytes={usage.storageUsedBytes}
+            limitBytes={usage.storageLimitBytes}
+          />
+        ) : (
+          <Skeleton className="h-9 w-full rounded-full sm:w-52" />
+        )}
       </div>
 
       {versions.length === 0 && idle ? (
@@ -215,6 +261,80 @@ function Project({ projectId }: { projectId: string }) {
             </ul>
           </section>
         </>
+      )}
+    </div>
+  )
+}
+
+// A collaborator can listen and leave notes: no uploads, usage or project/version menus.
+function SharedProject({
+  project,
+  versions,
+  onGone,
+  onDeleted,
+  titleRef,
+  versionsRef,
+}: {
+  project: ProjectData
+  versions: TrackSummary[]
+  onGone: () => void
+  onDeleted: () => void
+  titleRef: RefObject<HTMLHeadingElement | null>
+  versionsRef: RefObject<HTMLHeadingElement | null>
+}) {
+  return (
+    <div className="flex flex-col gap-6">
+      <BackToProjects />
+      <div className="flex items-start gap-2">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <h1
+            ref={titleRef}
+            tabIndex={-1}
+            className="text-heading-1 break-words outline-none"
+          >
+            {project.name}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Shared by {personName(project.owner)}
+          </p>
+        </div>
+        <ShareButton project={project} onGone={onGone} />
+      </div>
+
+      {versions.length === 0 ? (
+        <Empty className="border border-dashed p-6 sm:p-12">
+          <EmptyMedia variant="icon">
+            <AudioLines />
+          </EmptyMedia>
+          <EmptyHeader>
+            <EmptyTitle>No versions yet</EmptyTitle>
+            <EmptyDescription>
+              When {personFirstName(project.owner)} uploads a mix, it shows up
+              here.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <section aria-labelledby="versions" className="flex flex-col gap-3">
+          <h2
+            ref={versionsRef}
+            id="versions"
+            tabIndex={-1}
+            className="text-label tracking-wide text-muted-foreground uppercase outline-none"
+          >
+            Versions
+          </h2>
+          <ul className="flex flex-col gap-3">
+            {versions.map((track) => (
+              <VersionRow
+                key={track.id}
+                track={track}
+                onDeleted={onDeleted}
+                readOnly
+              />
+            ))}
+          </ul>
+        </section>
       )}
     </div>
   )

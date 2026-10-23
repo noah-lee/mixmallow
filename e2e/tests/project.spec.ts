@@ -1,10 +1,14 @@
 import { closeSync, ftruncateSync, openSync } from 'node:fs';
 import type { BrowserContext, Page } from '@playwright/test';
+import { projectMembers } from '@repo/db';
+import { and, eq } from 'drizzle-orm';
 import { createTestApp } from '../../apps/api/test/helpers/app.ts';
 import {
+  createMember,
   createNote,
   createProject,
   createTrack,
+  createUser,
 } from '../../apps/api/test/helpers/factories.ts';
 import { wav } from '../support/audio.ts';
 import { STORAGE_ORIGIN, WEB_ORIGIN } from '../support/env.ts';
@@ -95,11 +99,20 @@ async function seedProject(
     userId: user.id,
     name: 'Midnight Drive',
   });
+  const tracks = await addVersions(user.id, project.id, versions);
+  return { user, project, tracks };
+}
+
+async function addVersions(
+  userId: string,
+  projectId: string,
+  versions: Version[],
+) {
   const tracks = [];
   for (const v of versions) {
     const track = await createTrack(app.db, {
-      userId: user.id,
-      projectId: project.id,
+      userId,
+      projectId,
       name: v.name,
       format: v.format,
       contentType: v.format === 'wav' ? 'audio/wav' : 'audio/mpeg',
@@ -109,7 +122,7 @@ async function seedProject(
     });
     for (let i = 0; i < v.notes; i++) {
       await createNote(app.db, {
-        userId: user.id,
+        userId,
         trackId: track.id,
         timestampMs: i * 1000,
         done: i < v.done,
@@ -117,7 +130,42 @@ async function seedProject(
     }
     tracks.push(track);
   }
-  return { user, project, tracks };
+  return tracks;
+}
+
+const SAM_AVATAR = 'https://avatars.example.test/sam.png';
+const AVATAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#b8d8c8"/><circle cx="32" cy="26" r="12" fill="#4a3a2a"/><rect x="14" y="42" width="36" height="22" rx="11" fill="#c67a9c"/></svg>`;
+
+async function newUser(name: string, picture: string | null = null) {
+  const id = crypto.randomUUID();
+  return createUser(app.db, {
+    email: `user-${id}@example.com`,
+    authProviderId: `e2e-${id}`,
+    name,
+    picture,
+  });
+}
+
+// Maya Chen owns "Midnight Drive"; the signed-in Sam Rivera joined it.
+async function seedShared(
+  context: BrowserContext,
+  versions: Version[] = SAMPLE,
+) {
+  const owner = await newUser('Maya Chen');
+  const project = await createProject(app.db, {
+    userId: owner.id,
+    name: 'Midnight Drive',
+  });
+  const tracks = await addVersions(owner.id, project.id, versions);
+  const id = crypto.randomUUID();
+  const { user: me, cookies } = await signedInUser(app, {
+    email: `sam-${id}@example.com`,
+    name: 'Sam Rivera',
+    authProviderId: `e2e-${id}`,
+  });
+  await context.addCookies(cookies);
+  await createMember(app.db, { projectId: project.id, userId: me.id });
+  return { owner, me, project, tracks };
 }
 
 const projectUrl = (id: string) => `/app/projects/${id}`;
@@ -564,4 +612,110 @@ test.describe('a project delete the server refuses', () => {
     await expect(dialog).toBeVisible();
     await expect(page).toHaveURL(`${WEB_ORIGIN}${projectUrl(project.id)}`);
   });
+});
+
+test('owner with collaborators', async ({ page, context }) => {
+  await page.route(SAM_AVATAR, (route) =>
+    route.fulfill({ contentType: 'image/svg+xml', body: AVATAR_SVG }),
+  );
+  const { project } = await seedProject(context);
+  for (const [name, picture] of [
+    ['Sam Rivera', SAM_AVATAR],
+    ['Jo Park', null],
+  ] as const) {
+    const user = await newUser(name, picture);
+    await createMember(app.db, { projectId: project.id, userId: user.id });
+  }
+  await openProject(page, project.id);
+  const share = page.getByRole('button', { name: 'Share', exact: true });
+  await expect(share).toBeVisible();
+  await expect(share.locator('[data-slot="avatar"]')).toHaveCount(2);
+  await expect(share.getByText('JP')).toBeVisible();
+  await expect(page.getByText('61.6 MB of 100 MB')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Project options' }),
+  ).toBeVisible();
+  await captureScreenshot(page, 'project-owner-shared');
+
+  await share.click();
+  await expect(
+    page.getByRole('dialog', { name: 'Share project' }),
+  ).toContainText('2 of 10 collaborators');
+});
+
+test('owner without collaborators shows a plain Share button', async ({
+  page,
+  context,
+}) => {
+  const { project } = await seedProject(context);
+  await openProject(page, project.id);
+  const share = page.getByRole('button', { name: 'Share', exact: true });
+  await expect(share).toBeVisible();
+  await expect(share.locator('[data-slot="avatar"]')).toHaveCount(0);
+});
+
+test('collaborator', async ({ page, context }) => {
+  let askedUsage = false;
+  page.on('request', (req) => {
+    if (req.url().endsWith('/api/usage')) askedUsage = true;
+  });
+  const { project } = await seedShared(context);
+  await openProject(page, project.id);
+  await expect(page.getByText('Shared by Maya Chen')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Members', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Share' })).toHaveCount(0);
+  const items = rows(page).getByRole('listitem');
+  await expect(items).toHaveCount(3);
+  await expect(items.nth(0)).toContainText('2 notes · 0 done');
+  await expect(items.nth(2)).toContainText('11 notes · 11 done');
+  await expect(rows(page).getByRole('button')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Upload/ })).toHaveCount(0);
+  await expect(fileInput(page)).toHaveCount(0);
+  await expect(page.getByText(/of 100 MB/)).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'Project options' }),
+  ).toHaveCount(0);
+  expect(askedUsage).toBe(false);
+  await captureScreenshot(page, 'project-collaborator');
+});
+
+test('collaborator opens a version', async ({ page, context }) => {
+  const { project, tracks } = await seedShared(context);
+  await openProject(page, project.id);
+  await row(page, 'v2').getByRole('link').click();
+  await expect(page).toHaveURL(
+    `${WEB_ORIGIN}/app/projects/${project.id}/tracks/${tracks[1]?.id}`,
+  );
+});
+
+test('collaborator, no versions', async ({ page, context }) => {
+  const { project } = await seedShared(context, []);
+  await openProject(page, project.id);
+  await expect(page.getByText('No versions yet')).toBeVisible();
+  await expect(
+    page.getByText('When Maya uploads a mix, it shows up here.'),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Upload/ })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Versions' })).toBeHidden();
+  await captureScreenshot(page, 'project-collaborator-no-versions');
+});
+
+test('a removed collaborator gets not found', async ({ page, context }) => {
+  const { project, me } = await seedShared(context);
+  await openProject(page, project.id);
+  await app.db
+    .delete(projectMembers)
+    .where(
+      and(
+        eq(projectMembers.projectId, project.id),
+        eq(projectMembers.userId, me.id),
+      ),
+    );
+  await page.reload();
+  await expect(
+    page.getByRole('heading', { name: "This project doesn't exist" }),
+  ).toBeVisible();
+  await expect(page.getByText('Shared by Maya Chen')).toBeHidden();
 });
