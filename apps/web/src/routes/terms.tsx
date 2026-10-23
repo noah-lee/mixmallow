@@ -55,8 +55,9 @@ function Terms() {
           <li>up to {COLLABORATOR_LIMIT} collaborators on each project</li>
         </ul>
         <p>
-          Projects you join count toward their owner's limits, not yours. Your
-          account page shows how much space you've used. Deleting a version
+          Projects you join, and versions you upload to them, count toward their
+          owner's limits, not yours. Your account page shows how much space your
+          projects use, including versions members upload. Deleting a version
           frees its space. These limits may change, and any change will be shown
           here.
         </p>
@@ -79,8 +80,8 @@ function Terms() {
           By uploading a file, you give {site.name} permission only to store it,
           show its waveform, and play it back to you and the members of its
           project. It isn't published or used for anything else, and the
-          permission ends when you delete that version, its project or your
-          account.
+          permission ends when that version, its project or your account is
+          deleted.
         </p>
         <p>
           Only upload audio you own or have permission to use. You're
@@ -99,11 +100,13 @@ function Terms() {
           link until you reset it.
         </p>
         <p>
-          Members can listen to every version, add notes, and edit or delete
-          their own notes. Only the owner can upload, rename or delete versions
-          and the project, and the owner can mark done or delete anyone's note
-          at any time. Notes a member wrote stay in the project after they leave
-          or are removed.
+          Members can listen to every version, upload versions, add notes, mark
+          any note done, and edit or delete their own notes. A member can rename
+          or delete the versions they uploaded. Only the owner can rename or
+          delete the project and other people's versions, and the owner can
+          delete anyone's note at any time. Versions a member uploaded count
+          toward the owner's storage. Notes and versions a member added stay in
+          the project after they leave or are removed.
         </p>
       </LegalSection>
 

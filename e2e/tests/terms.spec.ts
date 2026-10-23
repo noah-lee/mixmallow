@@ -59,8 +59,9 @@ test('sharing', async ({ page }) => {
   await expect(
     page.getByText(/remove a member, or reset or turn off the link/),
   ).toBeVisible();
+  await expect(page.getByText(/owner can delete anyone's note/)).toBeVisible();
   await expect(
-    page.getByText(/owner can mark done or delete anyone's note/),
+    page.getByText(/A member can rename or delete the versions they uploaded/),
   ).toBeVisible();
   await page.evaluate('window.scrollBy(0, -16)');
   await captureScreenshot(page, 'terms-sharing', { fullPage: false });

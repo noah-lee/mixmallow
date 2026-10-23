@@ -51,6 +51,28 @@ test('sharing', async ({ page }) => {
   await captureScreenshot(page, 'privacy-sharing', { fullPage: false });
 });
 
+test('collaborator uploads', async ({ page }) => {
+  await page.goto('/privacy');
+  const paragraph = page.getByText(/^Every member can upload versions./);
+  await paragraph.scrollIntoViewIfNeeded();
+  await expect(paragraph).toContainText(
+    "counts toward the owner's storage, not the uploader's",
+  );
+  await expect(
+    page.getByText(/the versions you uploaded stay in the project/),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/by its uploader or the project's owner/),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/every version you uploaded and note you wrote/),
+  ).toBeVisible();
+  await page.evaluate('window.scrollBy(0, -16)');
+  await captureScreenshot(page, 'privacy-collaborator-uploads', {
+    fullPage: false,
+  });
+});
+
 test('contact links open an email to the support address', async ({ page }) => {
   await page.goto('/privacy');
   const links = page.getByRole('link', { name: /@/ });

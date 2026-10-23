@@ -38,7 +38,8 @@ function Privacy() {
         </p>
         <p>
           <strong className="font-semibold">Your audio files.</strong> The files
-          you upload, with their file name, format, size and length, and a small
+          you upload, to your own projects or ones you've joined, with their
+          file name, format, size and length, who uploaded them, and a small
           waveform summary your browser makes from the file when you upload it.
         </p>
         <p>
@@ -77,8 +78,9 @@ function Privacy() {
             below.
           </li>
           <li>
-            File sizes count toward your free storage limit, shown on your
-            account page.
+            File sizes count toward the free storage limit of the project's
+            owner, whoever uploaded them, and are shown on the owner's account
+            page.
           </li>
         </ul>
         <p>
@@ -101,12 +103,19 @@ function Privacy() {
           and profile picture. Your email address is never shown to other users.
         </p>
         <p>
+          Every member can upload versions. A version a member uploads is stored
+          in the owner's project with the uploader's name on it, and counts
+          toward the owner's storage, not the uploader's. The uploader and the
+          owner can rename or delete it.
+        </p>
+        <p>
           The owner can reset or turn off the link at any time, which stops it
           working for new people but keeps everyone who already joined, and can
           remove members. If you leave a project or are removed, you lose access
-          at once, but the notes you wrote stay in the project with your name on
-          them. The owner can delete them. A removed member can join again with
-          the current link until the owner resets it.
+          at once, but the notes you wrote and the versions you uploaded stay in
+          the project with your name on them and keep counting toward the
+          owner's storage. The owner can delete them. A removed member can join
+          again with the current link until the owner resets it.
         </p>
       </LegalSection>
 
@@ -140,18 +149,20 @@ function Privacy() {
 
       <LegalSection title="Keeping and deleting your data">
         <p>
-          Your data is kept while your account exists. When the owner deletes a
-          version, its audio file and everyone's notes on it are deleted. When
-          the owner deletes a project, all its versions, files and notes are
-          deleted, and its members lose access.
+          Your data is kept while your account exists. When a version is
+          deleted, by its uploader or the project's owner, its audio file and
+          everyone's notes on it are deleted. When the owner deletes a project,
+          all its versions, files and notes are deleted, and its members lose
+          access.
         </p>
         <p>
           To delete your whole account, email <ContactLink /> from the address
           you sign in with. Your account, your projects with their files, and
-          every note you wrote, including notes in other people's projects, will
-          be permanently deleted within 30 days. Deleting your projects also
-          deletes every member's notes in them, and their members lose access.
-          Server logs are kept for a limited time and then removed.
+          every version you uploaded and note you wrote, including those in
+          other people's projects, will be permanently deleted within 30 days.
+          Deleting a version also deletes everyone's notes on it. Deleting your
+          projects also deletes every member's notes in them, and their members
+          lose access. Server logs are kept for a limited time and then removed.
         </p>
         <p>
           You can also remove {site.name}'s access at any time from your{" "}
