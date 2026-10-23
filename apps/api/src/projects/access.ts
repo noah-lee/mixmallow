@@ -80,14 +80,19 @@ export type NoteAccess = {
   durationMs: number;
 };
 
+// `lock` takes the note row lock and, for a collaborator, a share lock on their membership,
+// so a removal waits for the write or the write sees the removal (Postgres can't lock the
+// nullable side of the outer join, hence the second query).
 export async function noteAccess(
   db: Database | Transaction,
   userId: string,
   noteId: string,
+  options: { lock?: boolean } = {},
 ): Promise<NoteAccess | null> {
-  const [row] = await db
+  const query = db
     .select({
       ...roleFields,
+      projectId: projects.id,
       authorId: notes.userId,
       durationMs: tracks.durationMs,
     })
@@ -96,7 +101,23 @@ export async function noteAccess(
     .innerJoin(projects, eq(projects.id, tracks.projectId))
     .leftJoin(projectMembers, membership(userId))
     .where(eq(notes.id, noteId));
+  const [row] = options.lock
+    ? await query.for('update', { of: notes })
+    : await query;
   const role = row ? roleOf(row, userId) : null;
   if (!row || !role) return null;
+  if (options.lock && role === 'collaborator') {
+    const [member] = await db
+      .select({ userId: projectMembers.userId })
+      .from(projectMembers)
+      .where(
+        and(
+          eq(projectMembers.projectId, row.projectId),
+          eq(projectMembers.userId, userId),
+        ),
+      )
+      .for('share');
+    if (!member) return null;
+  }
   return { role, authorId: row.authorId, durationMs: row.durationMs };
 }

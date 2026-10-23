@@ -75,6 +75,7 @@ test('Projects opens the list from a project page', async ({
     page.getByRole('heading', { level: 1, name: 'Midnight Drive' }),
   ).toBeVisible();
   await expect(projectsLink(page)).toHaveAttribute('aria-current', 'location');
+  await expect(projectsLink(page)).toHaveAttribute('data-status', 'active');
   await projectsLink(page).click();
   await expect(page).toHaveURL(`${WEB_ORIGIN}/app/projects`);
 });

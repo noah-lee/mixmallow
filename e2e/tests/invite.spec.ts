@@ -235,6 +235,32 @@ test('a collaborator goes straight to the project', async ({
   expect(await membersOf(project.id, user.id)).toHaveLength(1);
 });
 
+test('a session lost on the invite page shows the signed-out card', async ({
+  page,
+  context,
+}) => {
+  const { token } = await seedInvite();
+  await signIn(context);
+  const unauthorized = { status: 401, json: { error: 'unauthorized' } };
+  await page.route('**/api/invites/*/membership', (route) =>
+    route.fulfill(unauthorized),
+  );
+  await page.route('**/api/auth/refresh', (route) =>
+    route.fulfill(unauthorized),
+  );
+  await page.goto(`/invite/${token}`);
+  await expect(card(page)).toBeVisible();
+  await expect(
+    page
+      .getByRole('main')
+      .getByRole('button', { name: 'Continue with Google' }),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Join project' })).toHaveCount(
+    0,
+  );
+  await expect(page).toHaveURL(`${WEB_ORIGIN}/invite/${token}`);
+});
+
 test('invalid link', async ({ page }) => {
   await page.goto(`/invite/${newToken()}`);
   await expect(
@@ -341,7 +367,10 @@ test.describe('error', () => {
         : route.fallback(),
     );
     await page.goto(`/invite/${token}`);
-    await expect(page.getByText("Couldn't load this invite")).toBeVisible();
+    // Two retries with backoff (~3 s) come before the error state.
+    await expect(page.getByText("Couldn't load this invite")).toBeVisible({
+      timeout: 10_000,
+    });
     await captureScreenshot(page, 'invite-error');
     fail = false;
     await page.getByRole('button', { name: 'Try again' }).click();

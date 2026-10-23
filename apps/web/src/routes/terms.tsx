@@ -48,7 +48,10 @@ function Terms() {
             {MAX_FILE_BYTES < STORAGE_LIMIT_BYTES &&
               `, with each file up to ${formatBytes(MAX_FILE_BYTES)}`}
           </li>
-          <li>up to {NOTE_LIMIT_PER_TRACK} notes on each version</li>
+          <li>
+            up to {NOTE_LIMIT_PER_TRACK} notes on each version, counting every
+            member's notes
+          </li>
           <li>up to {COLLABORATOR_LIMIT} collaborators on each project</li>
         </ul>
         <p>
@@ -91,12 +94,16 @@ function Terms() {
           invite link can join until the project is full, so share it only with
           people you trust, and you're responsible for who you invite. You can
           remove a member, or reset or turn off the link so it stops working, at
-          any time.
+          any time. Resetting or turning off the link keeps the members who
+          already joined, and a removed member can join again with the current
+          link until you reset it.
         </p>
         <p>
-          Members can listen to every version and add notes, but only the owner
-          can upload, rename or delete. Notes a member wrote stay in the project
-          after they leave or are removed.
+          Members can listen to every version, add notes, and edit or delete
+          their own notes. Only the owner can upload, rename or delete versions
+          and the project, and the owner can mark done or delete anyone's note
+          at any time. Notes a member wrote stay in the project after they leave
+          or are removed.
         </p>
       </LegalSection>
 

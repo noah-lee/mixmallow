@@ -1,10 +1,10 @@
-import { notes } from '@repo/db';
+import { notes, projectMembers } from '@repo/db';
 import {
   NOTE_LIMIT_PER_TRACK,
   NOTE_TEXT_MAX,
   noteListResponseSchema,
 } from '@repo/shared/schemas';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp } from './helpers/app.ts';
@@ -504,6 +504,31 @@ describe('notes on a shared project', () => {
       expect(res.statusCode).toBe(403);
       expect(res.json()).toEqual({ error: 'note_limit_reached' });
     }
+  });
+
+  it('refuses an edit or delete that races the removal of its collaborator', async () => {
+    const { collaborator, project, track } = await shared();
+    const note = await ownNote(collaborator, track.id);
+    const pending: Promise<{ statusCode: number }>[] = [];
+    await app.db.transaction(async (tx) => {
+      await tx
+        .delete(projectMembers)
+        .where(
+          and(
+            eq(projectMembers.projectId, project.id),
+            eq(projectMembers.userId, collaborator.user.id),
+          ),
+        );
+      pending.push(
+        patchNote(note.id, { text: 'Late' }, collaborator.cookies),
+        deleteNote(note.id, collaborator.cookies),
+      );
+      // Let both requests reach the membership lock before the removal commits.
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+    const results = await Promise.all(pending);
+    expect(results.map((r) => r.statusCode)).toEqual([404, 404]);
+    expect(await noteRow(note.id)).toMatchObject({ text: 'Original' });
   });
 
   it('404s an outsider listing, adding, changing or deleting notes', async () => {

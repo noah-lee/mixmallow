@@ -32,17 +32,24 @@ export async function processJob(
   try {
     const input = path.join(dir, `original.${job.format}`);
     const output = path.join(dir, `preview.${PREVIEW_EXTENSION}`);
-    await storage.download(job.storageKey, input);
+    await storage.download(job.storageKey, input, signal);
     signal.throwIfAborted();
     await deps.transcode(input, output, signal);
     signal.throwIfAborted();
 
     const key = storageKey(job.userId, PREVIEW_EXTENSION);
-    await storage.upload({
-      key,
-      filePath: output,
-      contentType: PREVIEW_CONTENT_TYPE,
-    });
+    try {
+      await storage.upload({
+        key,
+        filePath: output,
+        contentType: PREVIEW_CONTENT_TYPE,
+        signal,
+      });
+    } catch (err) {
+      // An aborted PUT may still have stored the object.
+      await discard(deps, key);
+      throw err;
+    }
     let recorded = false;
     try {
       recorded = await completeJob(db, job, key);

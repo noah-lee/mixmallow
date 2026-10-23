@@ -1,6 +1,6 @@
 import { closeSync, ftruncateSync, openSync } from 'node:fs';
 import type { BrowserContext, Page } from '@playwright/test';
-import { projectMembers } from '@repo/db';
+import { projectMembers, tracks as trackTable } from '@repo/db';
 import { and, eq } from 'drizzle-orm';
 import { createTestApp } from '../../apps/api/test/helpers/app.ts';
 import {
@@ -571,6 +571,46 @@ test('delete a version', async ({ page, context }) => {
   await expect(page.getByText('51.9 MB of 100 MB')).toBeVisible();
 });
 
+test('deleting the last version focuses the project title', async ({
+  page,
+  context,
+}) => {
+  const [only] = SAMPLE;
+  if (!only) throw new Error('no sample');
+  const { project } = await seedProject(context, [only]);
+  await openProject(page, project.id);
+  await page.getByRole('button', { name: 'More for v1' }).click();
+  await page.getByRole('menuitem', { name: 'Delete' }).click();
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Delete' })
+    .click();
+  await expect(page.getByText('No versions yet')).toBeVisible();
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Midnight Drive' }),
+  ).toBeFocused();
+});
+
+test('a version already deleted elsewhere drops out and focuses Versions', async ({
+  page,
+  context,
+}) => {
+  const { project, tracks } = await seedProject(context);
+  await openProject(page, project.id);
+  await page.getByRole('button', { name: 'More for v2' }).click();
+  await page.getByRole('menuitem', { name: 'Delete' }).click();
+  const dialog = page.getByRole('alertdialog');
+  await app.db.delete(trackTable).where(eq(trackTable.id, tracks[1]?.id ?? ''));
+  const refused = page.waitForResponse(
+    (res) => res.request().method() === 'DELETE' && res.status() === 404,
+  );
+  await dialog.getByRole('button', { name: 'Delete' }).click();
+  await refused;
+  await expect(dialog).toBeHidden();
+  await expect(row(page, 'v2')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Versions' })).toBeFocused();
+});
+
 test('delete the project', async ({ page, context }) => {
   const { project } = await seedProject(context);
   await openProject(page, project.id);
@@ -618,15 +658,22 @@ test('owner with collaborators', async ({ page, context }) => {
   await page.route(SAM_AVATAR, (route) =>
     route.fulfill({ contentType: 'image/svg+xml', body: AVATAR_SVG }),
   );
-  const { project } = await seedProject(context);
+  const { project, tracks } = await seedProject(context);
   for (const [name, picture] of [
     ['Sam Rivera', SAM_AVATAR],
     ['Jo Park', null],
   ] as const) {
     const user = await newUser(name, picture);
     await createMember(app.db, { projectId: project.id, userId: user.id });
+    await createNote(app.db, {
+      userId: user.id,
+      trackId: tracks[2]?.id ?? '',
+      timestampMs: 30_000,
+    });
   }
   await openProject(page, project.id);
+  // v3's own 2 notes plus one from each collaborator.
+  await expect(row(page, 'v3')).toContainText('4 notes · 0 done');
   const share = page.getByRole('button', { name: 'Share', exact: true });
   await expect(share).toBeVisible();
   await expect(share.locator('[data-slot="avatar"]')).toHaveCount(2);
@@ -647,11 +694,17 @@ test('owner without collaborators shows a plain Share button', async ({
   page,
   context,
 }) => {
+  let askedMembers = false;
+  page.on('request', (req) => {
+    if (new URL(req.url()).pathname.endsWith('/members')) askedMembers = true;
+  });
   const { project } = await seedProject(context);
   await openProject(page, project.id);
   const share = page.getByRole('button', { name: 'Share', exact: true });
   await expect(share).toBeVisible();
   await expect(share.locator('[data-slot="avatar"]')).toHaveCount(0);
+  await page.waitForLoadState('networkidle');
+  expect(askedMembers).toBe(false);
 });
 
 test('collaborator', async ({ page, context }) => {
@@ -718,4 +771,26 @@ test('a removed collaborator gets not found', async ({ page, context }) => {
     page.getByRole('heading', { name: "This project doesn't exist" }),
   ).toBeVisible();
   await expect(page.getByText('Shared by Maya Chen')).toBeHidden();
+});
+
+test('a collaborator removed while the page is open gets not found from Members', async ({
+  page,
+  context,
+}) => {
+  const { project, me } = await seedShared(context);
+  await openProject(page, project.id);
+  await app.db
+    .delete(projectMembers)
+    .where(
+      and(
+        eq(projectMembers.projectId, project.id),
+        eq(projectMembers.userId, me.id),
+      ),
+    );
+  await page.getByRole('button', { name: 'Members', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: "This project doesn't exist" }),
+  ).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page).toHaveURL(`${WEB_ORIGIN}${projectUrl(project.id)}`);
 });

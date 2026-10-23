@@ -29,7 +29,18 @@ test('default', async ({ page }) => {
     page.getByText('up to 1 project', { exact: true }),
   ).toBeVisible();
   await expect(page.getByText(/100 MB of stored audio/)).toBeVisible();
+  await expect(
+    page.getByText(
+      "up to 500 notes on each version, counting every member's notes",
+      { exact: true },
+    ),
+  ).toBeVisible();
   await expect(page.getByText(/You keep all rights/)).toBeVisible();
+  await expect(
+    page.getByText(
+      /permission only to store it, show its waveform, and play it back/,
+    ),
+  ).toBeVisible();
   await expect(
     page.getByText('up to 10 collaborators on each project', { exact: true }),
   ).toBeVisible();
@@ -47,6 +58,9 @@ test('sharing', async ({ page }) => {
   ).toBeVisible();
   await expect(
     page.getByText(/remove a member, or reset or turn off the link/),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/owner can mark done or delete anyone's note/),
   ).toBeVisible();
   await page.evaluate('window.scrollBy(0, -16)');
   await captureScreenshot(page, 'terms-sharing', { fullPage: false });

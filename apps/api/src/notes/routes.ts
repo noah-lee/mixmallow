@@ -128,35 +128,29 @@ export const noteRoutes: FastifyPluginAsyncZod = async (app) => {
     async (req, reply) => {
       const userId = req.user.sub;
       const { noteId } = req.params;
-      const access = await noteAccess(app.db, userId, noteId);
-      if (!access) {
-        reply.code(404);
-        return notFound;
-      }
-      const { timestampMs, text, done } = req.body;
-      const isAuthor = access.authorId === userId;
-      const editsContent = text !== undefined || timestampMs !== undefined;
-      if (
-        (editsContent && !isAuthor) ||
-        (done !== undefined && !isAuthor && access.role !== 'owner')
-      ) {
-        reply.code(403);
-        return forbidden;
-      }
-      if (timestampMs !== undefined && timestampMs > access.durationMs) {
-        reply.code(400);
-        return beyondTrack;
-      }
-      const updated = await app.db
-        .update(notes)
-        .set(omitUndefined(req.body))
-        .where(eq(notes.id, noteId))
-        .returning({ id: notes.id });
-      if (updated.length === 0) {
-        reply.code(404);
-        return notFound;
-      }
-      return findNote(app.db, noteId);
+      const result = await app.db.transaction(async (tx) => {
+        const access = await noteAccess(tx, userId, noteId, { lock: true });
+        if (!access) return { status: 404, body: notFound } as const;
+        const { timestampMs, text, done } = req.body;
+        const isAuthor = access.authorId === userId;
+        const editsContent = text !== undefined || timestampMs !== undefined;
+        if (
+          (editsContent && !isAuthor) ||
+          (done !== undefined && !isAuthor && access.role !== 'owner')
+        ) {
+          return { status: 403, body: forbidden } as const;
+        }
+        if (timestampMs !== undefined && timestampMs > access.durationMs) {
+          return { status: 400, body: beyondTrack } as const;
+        }
+        await tx
+          .update(notes)
+          .set(omitUndefined(req.body))
+          .where(eq(notes.id, noteId));
+        return { status: 200, body: await findNote(tx, noteId) } as const;
+      });
+      reply.code(result.status);
+      return result.body;
     },
   );
 
@@ -166,22 +160,18 @@ export const noteRoutes: FastifyPluginAsyncZod = async (app) => {
     async (req, reply) => {
       const userId = req.user.sub;
       const { noteId } = req.params;
-      const access = await noteAccess(app.db, userId, noteId);
-      if (!access) {
-        reply.code(404);
-        return notFound;
-      }
-      if (access.authorId !== userId && access.role !== 'owner') {
-        reply.code(403);
-        return forbidden;
-      }
-      const [removed] = await app.db
-        .delete(notes)
-        .where(eq(notes.id, noteId))
-        .returning({ id: notes.id });
-      if (!removed) {
-        reply.code(404);
-        return notFound;
+      const refusal = await app.db.transaction(async (tx) => {
+        const access = await noteAccess(tx, userId, noteId, { lock: true });
+        if (!access) return { status: 404, body: notFound } as const;
+        if (access.authorId !== userId && access.role !== 'owner') {
+          return { status: 403, body: forbidden } as const;
+        }
+        await tx.delete(notes).where(eq(notes.id, noteId));
+        return null;
+      });
+      if (refusal) {
+        reply.code(refusal.status);
+        return refusal.body;
       }
       return reply.code(204).send();
     },

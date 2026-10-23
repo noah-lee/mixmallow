@@ -16,7 +16,8 @@ export const storagePlugin = fp<{ driver?: StorageDriver }>(
       presignPut: (input) => driver.presignPut(input),
       presignGet: (key) => driver.presignGet(key),
       headSize: (key) => driver.headSize(key),
-      download: (key, filePath) => driver.download(key, filePath),
+      download: (key, filePath, signal) =>
+        driver.download(key, filePath, signal),
       upload: (input) => driver.upload(input),
       async deleteMany(keys) {
         const results = await Promise.allSettled(

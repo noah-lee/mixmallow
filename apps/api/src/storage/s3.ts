@@ -93,13 +93,20 @@ export function createS3Driver(config: Config): StorageDriver {
       await client.send(new DeleteObjectCommand({ Bucket, Key: key }));
     },
 
-    async download(key, filePath) {
-      const res = await client.send(new GetObjectCommand({ Bucket, Key: key }));
+    async download(key, filePath, signal) {
+      const res = await client.send(
+        new GetObjectCommand({ Bucket, Key: key }),
+        {
+          abortSignal: signal,
+        },
+      );
       if (!res.Body) throw new Error(`object ${key} has no body`);
-      await pipeline(res.Body as Readable, createWriteStream(filePath));
+      await pipeline(res.Body as Readable, createWriteStream(filePath), {
+        signal,
+      });
     },
 
-    async upload({ key, filePath, contentType }) {
+    async upload({ key, filePath, contentType, signal }) {
       // A stream body needs an explicit length, or the SDK can't sign the PUT.
       const { size } = await stat(filePath);
       await client.send(
@@ -110,6 +117,7 @@ export function createS3Driver(config: Config): StorageDriver {
           ContentType: contentType,
           ContentLength: size,
         }),
+        { abortSignal: signal },
       );
     },
   };

@@ -281,6 +281,36 @@ describe('transcode worker', () => {
     expect(await jobRow(job.id)).toMatchObject({ status: 'done', attempts: 1 });
   });
 
+  it('ends a stuck download and hands the job back when stopped', async () => {
+    const { job } = await queuedWav();
+    let started = () => {};
+    const downloading = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const stuck: WorkerDeps = {
+      ...deps(fakeTranscoder().transcode),
+      storage: {
+        ...memoryStorage(app),
+        download: (_key, _filePath, signal) =>
+          new Promise((_resolve, reject) => {
+            signal.addEventListener('abort', () => reject(signal.reason), {
+              once: true,
+            });
+            started();
+          }),
+      },
+    };
+    const worker = startWorker(stuck, { pollMs: HOUR_MS });
+    await downloading;
+
+    await worker.stop();
+
+    expect(await jobRow(job.id)).toMatchObject({
+      status: 'queued',
+      attempts: 0,
+    });
+  });
+
   it('discards the preview of a track deleted while it was transcoding', async () => {
     const { session, track } = await queuedWav();
     const { transcode } = fakeTranscoder(async () => {
@@ -297,6 +327,24 @@ describe('transcode worker', () => {
         .from(transcodeJobs)
         .where(eq(transcodeJobs.trackId, track.id)),
     ).toEqual([]);
+  });
+
+  it('leaves no preview behind when the project is deleted mid-transcode', async () => {
+    const { session, track } = await queuedWav();
+    const { transcode } = fakeTranscoder(async () => {
+      const res = await app.inject({
+        method: 'DELETE',
+        url: `/api/projects/${track.projectId}`,
+        cookies: session.cookies,
+      });
+      expect(res.statusCode).toBe(204);
+    });
+
+    expect(await runOnce(deps(transcode))).toBe(true);
+
+    expect(await trackRow(track.id)).toBeUndefined();
+    expect(previewsOf(session.user.id)).toEqual([]);
+    expect(memoryStorage(app).objects.has(track.storageKey)).toBe(false);
   });
 
   it('discards the preview when another worker took the job over', async () => {

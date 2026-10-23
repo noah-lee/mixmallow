@@ -83,8 +83,8 @@ function Privacy() {
         </ul>
         <p>
           Your data isn't sold, used for advertising, or shared with anyone
-          except the members of projects you share, as described under "Sharing
-          a project", and the service providers named on this page.
+          except the members of projects you own or join, as described under
+          "Sharing a project", and the service providers named on this page.
         </p>
       </LegalSection>
 
@@ -102,9 +102,11 @@ function Privacy() {
         </p>
         <p>
           The owner can reset or turn off the link at any time, which stops it
-          working, and can remove members. If you leave a project or are
-          removed, you lose access at once, but the notes you wrote stay in the
-          project with your name on them. The owner can delete them.
+          working for new people but keeps everyone who already joined, and can
+          remove members. If you leave a project or are removed, you lose access
+          at once, but the notes you wrote stay in the project with your name on
+          them. The owner can delete them. A removed member can join again with
+          the current link until the owner resets it.
         </p>
       </LegalSection>
 
@@ -147,8 +149,9 @@ function Privacy() {
           To delete your whole account, email <ContactLink /> from the address
           you sign in with. Your account, your projects with their files, and
           every note you wrote, including notes in other people's projects, will
-          be permanently deleted within 30 days. Server logs are kept for a
-          limited time and then removed.
+          be permanently deleted within 30 days. Deleting your projects also
+          deletes every member's notes in them, and their members lose access.
+          Server logs are kept for a limited time and then removed.
         </p>
         <p>
           You can also remove {site.name}'s access at any time from your{" "}

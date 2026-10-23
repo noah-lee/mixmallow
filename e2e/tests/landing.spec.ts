@@ -309,16 +309,17 @@ test.describe('signed in with next', () => {
     await expect(projectLink).toBeVisible();
 
     const failed = new Set<string>();
+    let refreshes = 0;
     await page.route('**/api/**', (route) => {
-      failed.add(new URL(route.request().url()).pathname);
+      const { pathname } = new URL(route.request().url());
+      failed.add(pathname);
+      if (pathname === '/api/auth/refresh') refreshes++;
       return route.fulfill({ status: 401, json: { error: 'unauthorized' } });
     });
     const landing = `${WEB_ORIGIN}/?next=%2Fapp%2Fprojects%2F${project.id}`;
-    const landings: string[] = [];
+    const urls: string[] = [];
     page.on('framenavigated', (frame) => {
-      if (frame === page.mainFrame() && frame.url() === landing) {
-        landings.push(frame.url());
-      }
+      if (frame === page.mainFrame()) urls.push(frame.url());
     });
 
     // The project page loads the project and its versions at once; both fail.
@@ -327,7 +328,9 @@ test.describe('signed in with next', () => {
     await expect(notice(page)).toHaveText('Sign in to continue.');
     expect(failed).toContain(`/api/projects/${project.id}`);
     expect(failed).toContain(`/api/projects/${project.id}/tracks`);
-    expect(landings).toHaveLength(1);
+    // The click's own navigation, then exactly one redirect and nothing after it.
+    expect(urls).toEqual([`${WEB_ORIGIN}/app/projects/${project.id}`, landing]);
+    expect(refreshes).toBe(1);
   });
 });
 

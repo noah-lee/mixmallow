@@ -130,7 +130,7 @@ async function seedTrack(
 const trackUrl = (projectId: string, trackId: string) =>
   `/app/projects/${projectId}/tracks/${trackId}`;
 const notesRegion = (page: Page) =>
-  page.getByRole('region', { name: /notes/i });
+  page.getByRole('region', { name: /\bnotes?\b/i });
 const noteRows = (page: Page) => notesRegion(page).getByRole('listitem');
 const noteRow = (page: Page, text: string) =>
   noteRows(page).filter({ hasText: text });
@@ -409,6 +409,70 @@ test('adding a note at the playhead, nudged', async ({ page, context }) => {
   ).toBeVisible();
   await expect.poll(() => markedNotes(page)).toBe(7);
   if (!isPhone()) await expect(noteField(page)).toHaveValue('');
+});
+
+test('a note at a fractional playhead saves its exact time and marks it', async ({
+  page,
+  context,
+}) => {
+  const { project, track } = await seedTrack(context, []);
+  await openTrack(page, project.id, track.id);
+  await waitForAudio(page);
+  // 1:42.5 sits half a second inside 1:42, wider than one waveform pixel on a phone.
+  const target = 102_500 / DURATION_MS;
+  const box = await waveform(page).boundingBox();
+  if (!box) throw new Error('waveform has no box');
+  await page.mouse.click(box.x + box.width * target, box.y + box.height / 3);
+  await expect(currentTime(page)).toHaveText('1:42');
+
+  await startNote(page);
+  await noteField(page).fill('Vocal ride drops out');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(noteRow(page, 'Vocal ride drops out')).toContainText('1:42');
+
+  const [saved] = await app.db
+    .select({ at: notesTable.timestampMs })
+    .from(notesTable)
+    .where(eq(notesTable.trackId, track.id));
+  expect(saved?.at).toBeGreaterThan(102_000);
+  expect(saved?.at).toBeLessThan(103_000);
+  expect((saved?.at ?? 0) % 1000).not.toBe(0);
+
+  await expect(markers(page)).toHaveCount(1);
+  const marker = await markers(page).boundingBox();
+  if (!marker) throw new Error('marker has no box');
+  const markerAt = (marker.x + marker.width / 2 - box.x) / box.width;
+  expect(markerAt).toBeCloseTo((saved?.at ?? 0) / DURATION_MS, 2);
+});
+
+test('a note draft is cleared after save, cancel and closing the sheet', async ({
+  page,
+  context,
+}) => {
+  const { project, track } = await seedTrack(context);
+  await openTrack(page, project.id, track.id);
+  await waitForAudio(page);
+  const reopen = async () => {
+    await startNote(page);
+    await expect(noteField(page)).toHaveValue('');
+  };
+
+  await startNote(page);
+  await noteField(page).fill('Saved one');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(noteRow(page, 'Saved one')).toBeVisible();
+  await reopen();
+
+  await noteField(page).fill('Cancelled one');
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await reopen();
+
+  if (isPhone()) {
+    await noteField(page).fill('Dismissed one');
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await reopen();
+  }
 });
 
 test('a note draft survives crossing the desktop breakpoint', async ({
@@ -704,6 +768,62 @@ test.describe('the audio fails', () => {
       waitForIdle: false,
     });
   });
+
+  test('Pause during a pending resume keeps the player paused', async ({
+    page,
+    context,
+  }) => {
+    const { user, project, track } = await seedTrack(context);
+    // Same expiring original as above; the preview it switches to is held until released.
+    const chunkEnd = 44 + 8000 * 2 * 20;
+    await page.route(`${STORAGE_ORIGIN}/${track.storageKey}*`, (route) => {
+      const range = /bytes=(\d+)-/.exec(route.request().headers().range ?? '');
+      if (range && Number(range[1]) > 0) return route.fulfill({ status: 403 });
+      return route.fulfill({
+        status: 206,
+        contentType: 'audio/wav',
+        headers: {
+          'Accept-Ranges': 'bytes',
+          'Content-Range': `bytes 0-${chunkEnd - 1}/${AUDIO.length}`,
+        },
+        body: AUDIO.subarray(0, chunkEnd),
+      });
+    });
+    const previewKey = `users/${user.id}/${crypto.randomUUID()}.m4a`;
+    let release = () => {};
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let previewRequested = false;
+    await page.route(`${STORAGE_ORIGIN}/${previewKey}*`, async (route) => {
+      previewRequested = true;
+      await released;
+      return serveAudio(route);
+    });
+    await openTrack(page, project.id, track.id);
+    await waitForAudio(page);
+    await app.db
+      .update(tracks)
+      .set({ previewKey })
+      .where(eq(tracks.id, track.id));
+
+    await playButton(page).click();
+    await noteRow(page, 'Kick and bass')
+      .getByRole('button', { name: /Play from/ })
+      .click();
+    await expect.poll(() => previewRequested).toBe(true);
+    // Still buffering the new link, but the button says what a press will do.
+    await expect(pauseButton(page)).toBeVisible();
+    await pauseButton(page).click();
+    await expect(playButton(page)).toBeVisible();
+
+    release();
+    await waitForAudio(page);
+    const pausedAt = await currentTime(page).textContent();
+    await page.waitForTimeout(1500);
+    await expect(playButton(page)).toBeVisible();
+    await expect(currentTime(page)).toHaveText(pausedAt ?? '');
+  });
 });
 
 test.describe('the track fails to load', () => {
@@ -871,6 +991,10 @@ async function seedSharedTrack(
     authProviderId: `e2e-${id}`,
   });
   await context.addCookies(signedIn.cookies);
+  // Sam's picture is on a host that doesn't resolve; a failed image load is a console error.
+  await context.route(SAM_AVATAR, (route) =>
+    route.fulfill({ contentType: 'image/svg+xml', body: AVATAR_SVG }),
+  );
   const other =
     as === 'owner'
       ? await newUser('Sam Rivera', SAM_AVATAR)
@@ -907,9 +1031,6 @@ const doneBox = (page: Page, text: string) =>
   noteRow(page, text).getByRole('checkbox');
 
 test('owner on a shared project', async ({ page, context }) => {
-  await page.route(SAM_AVATAR, (route) =>
-    route.fulfill({ contentType: 'image/svg+xml', body: AVATAR_SVG }),
-  );
   const { project, track } = await seedSharedTrack(context, 'owner');
   await openTrack(page, project.id, track.id);
   await expect(

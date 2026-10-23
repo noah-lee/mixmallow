@@ -135,7 +135,34 @@ test('entry route sends a user with only shared projects to the projects list', 
   await expect(
     page.getByRole('heading', { level: 1, name: 'Projects' }),
   ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { level: 2, name: 'Shared with you' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: /Midnight Drive/ }),
+  ).toBeVisible();
+  await page.getByRole('link', { name: 'Upload a track' }).click();
+  await expect(page).toHaveURL(`${WEB_ORIGIN}/app/start`);
+  await page.goBack();
   await captureScreenshot(page, 'app-entry-shared-only');
+});
+
+test('entry route opens a project without versions on its project page', async ({
+  page,
+}) => {
+  const list = projectList();
+  const [project] = list.items;
+  if (!project) throw new Error('no project');
+  await page.route('**/api/projects', (route) =>
+    route.fulfill({
+      json: {
+        ...list,
+        items: [{ ...project, trackCount: 0, latestTrack: null }],
+      },
+    }),
+  );
+  await page.goto('/app');
+  await expect(page).toHaveURL(`${WEB_ORIGIN}/app/projects/${PROJECT_ID}`);
 });
 
 test('empty', async ({ page }) => {
@@ -297,6 +324,84 @@ test.describe('storage refuses the file', () => {
     await expect(
       page.getByRole('button', { name: 'Choose a file' }),
     ).toBeVisible();
+  });
+});
+
+test.describe('upload complete is refused', () => {
+  test.use({
+    expectedConsoleError: /Failed to load resource: .*status of (409|500)/,
+  });
+
+  const incomplete = { status: 409, json: { error: 'upload_incomplete' } };
+
+  test('a 409 is retried once and the upload then finishes', async ({
+    page,
+  }) => {
+    let completes = 0;
+    await page.route(STORAGE, storageOk);
+    await page.route('**/api/uploads/*/complete', (route) => {
+      completes++;
+      return route.fulfill(
+        completes === 1
+          ? incomplete
+          : { status: 201, json: completeResponse() },
+      );
+    });
+    await openStart(page);
+    await fileInput(page).setInputFiles(MIX);
+    await expect(page).toHaveURL(
+      `${WEB_ORIGIN}/app/projects/${PROJECT_ID}/tracks/${TRACK_ID}`,
+    );
+    expect(completes).toBe(2);
+  });
+
+  test('a second 409 shows upload failed', async ({ page }) => {
+    let completes = 0;
+    await page.route(STORAGE, storageOk);
+    await page.route('**/api/uploads/*/complete', (route) => {
+      completes++;
+      return route.fulfill(incomplete);
+    });
+    await openStart(page);
+    await fileInput(page).setInputFiles(MIX);
+    await expect(page.getByText('Upload failed')).toBeVisible();
+    expect(completes).toBe(2);
+  });
+
+  test('a 500 shows upload failed without a retry', async ({ page }) => {
+    let completes = 0;
+    await page.route(STORAGE, storageOk);
+    await page.route('**/api/uploads/*/complete', (route) => {
+      completes++;
+      return route.fulfill({ status: 500, json: { error: 'internal' } });
+    });
+    await openStart(page);
+    await fileInput(page).setInputFiles(MIX);
+    await expect(page.getByText('Upload failed')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+    expect(completes).toBe(1);
+  });
+});
+
+test.describe('storage is full on the server', () => {
+  test.use({
+    expectedConsoleError: /Failed to load resource: .*status of 403/,
+  });
+
+  test('a refused registration shows the no-space message', async ({
+    page,
+  }) => {
+    await page.route('**/api/uploads', (route) =>
+      route.fulfill({ status: 403, json: { error: 'storage_limit_reached' } }),
+    );
+    await openStart(page);
+    await fileInput(page).setInputFiles(MIX);
+    await expect(page.getByRole('alert')).toHaveText(
+      'Not enough space. Delete a version to free some up.',
+    );
+    await expect(
+      page.getByRole('button', { name: 'Choose a file' }),
+    ).toBeEnabled();
   });
 });
 

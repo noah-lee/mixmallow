@@ -20,12 +20,14 @@ export type StorageDriver = {
   // null when the object doesn't exist.
   headSize(key: string): Promise<number | null>;
   delete(key: string): Promise<void>;
-  // Server-side transfers for the transcode worker; both stream through a local file.
-  download(key: string, filePath: string): Promise<void>;
+  // Server-side transfers for the transcode worker; both stream through a local file and
+  // stop when `signal` aborts (worker shutdown).
+  download(key: string, filePath: string, signal: AbortSignal): Promise<void>;
   upload(input: {
     key: string;
     filePath: string;
     contentType: string;
+    signal: AbortSignal;
   }): Promise<void>;
 };
 

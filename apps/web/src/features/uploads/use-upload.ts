@@ -128,6 +128,7 @@ export function useUpload({
 
   const upload = useCallback(
     async (prepared: PreparedFile) => {
+      run.current?.controller.abort()
       const current: Run = { controller: new AbortController() }
       run.current = current
       const live = () => run.current === current
@@ -143,8 +144,9 @@ export function useUpload({
         }
         const { data } = await api.post("/uploads", body, { signal })
         const target = createUploadResponseSchema.parse(data)
-        pendingUploadId.current = target.uploadId
+        // A superseded run's upload was already replaced on the server; don't track its id.
         if (!live()) return
+        pendingUploadId.current = target.uploadId
 
         step = "put"
         await putFile(
