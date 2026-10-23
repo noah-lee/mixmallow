@@ -30,6 +30,8 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useMe } from "@/features/auth/api"
+import { personName } from "@/features/members/person-name"
 import { ShareButton } from "@/features/members/share-sheet"
 import {
   PROJECTS_QUERY_KEY,
@@ -50,7 +52,7 @@ import {
   NoteForm,
   type NoteSaveResult,
 } from "@/features/tracks/note-form"
-import { NoteRow } from "@/features/tracks/note-row"
+import { type NoteControls, NoteRow } from "@/features/tracks/note-row"
 import { AudioFailedAlert, PlayerPanel } from "@/features/tracks/player-panel"
 import { TrackMenu } from "@/features/tracks/track-menu"
 import { usePlayer, useSpaceToggle } from "@/features/tracks/use-player"
@@ -67,6 +69,7 @@ export const Route = createFileRoute(
 })
 
 const LIMIT_MESSAGE = `This version has the maximum of ${NOTE_LIMIT_PER_TRACK} notes.`
+const FORBIDDEN_MESSAGE = "You can't change that note."
 
 function TrackPage() {
   const { projectId, trackId } = Route.useParams()
@@ -142,6 +145,7 @@ function TrackView({
 }) {
   const qc = useQueryClient()
   const navigate = useNavigate()
+  const meId = useMe().data?.id
   const desktop = useMediaQuery("(min-width: 1024px)")
   const addBarRef = useRef<HTMLDivElement>(null)
   // The phone "Add note" bar is fixed to the viewport: pad the page so the last note and the
@@ -185,6 +189,17 @@ function TrackView({
     },
   }
 
+  // Until the project loads, the role is unknown: offer only what any member may do.
+  const isOwner = project?.role === "owner"
+  const controlsFor = (note: Note): NoteControls => {
+    const own = meId !== undefined && note.author.id === meId
+    return { edit: own, delete: own || isOwner, done: own || isOwner }
+  }
+  // A solo project looks as it did before sharing; a removed member's notes still need names.
+  const showAuthors =
+    (project?.collaboratorCount ?? 0) > 0 ||
+    new Set(notes.map((n) => n.author.id)).size > 1
+
   const atLimit = notes.length >= NOTE_LIMIT_PER_TRACK
   const doneCount = notes.filter((n) => n.done).length
   // The last note the playhead has passed, while playing.
@@ -198,6 +213,12 @@ function TrackView({
     toast("That note was already deleted.")
   }
 
+  // The role changed under us (e.g. a stale page): show the server's view of the notes.
+  const forbidden = () => {
+    void cache.refetch()
+    toast.error(FORBIDDEN_MESSAGE)
+  }
+
   const saveError = (err: unknown, noteId?: string): NoteSaveResult => {
     const status = httpStatus(err)
     if (status === 400) {
@@ -208,6 +229,12 @@ function TrackView({
     if (status === 403 && apiErrorCode(err) === "note_limit_reached") {
       void cache.refetch()
       setAdding(null)
+      return "closed"
+    }
+    if (status === 403) {
+      setEditing(null)
+      setAdding(null)
+      forbidden()
       return "closed"
     }
     if (status === 404) {
@@ -264,7 +291,8 @@ function TrackView({
         return
       }
       cache.put(note)
-      toast.error("Couldn't update the note. Try again.")
+      if (httpStatus(err) === 403) forbidden()
+      else toast.error("Couldn't update the note. Try again.")
     }
   }
 
@@ -292,9 +320,15 @@ function TrackView({
     } catch (err) {
       if (httpStatus(err) !== 404) {
         cache.put(note)
-        toast.error("Couldn't delete the note. Try again.")
+        if (httpStatus(err) === 403) forbidden()
+        else toast.error("Couldn't delete the note. Try again.")
         return
       }
+    }
+    // Undo re-creates the note as the caller, so it's offered only for one's own.
+    if (note.author.id !== meId) {
+      toast("Note deleted")
+      return
     }
     toast("Note deleted", {
       duration: 5000,
@@ -357,12 +391,14 @@ function TrackView({
           </h1>
         </div>
         {project && <ShareButton project={project} onGone={onGone} />}
-        <TrackMenu
-          track={track}
-          noteCount={notes.length}
-          onGone={onGone}
-          onDeleted={() => void leave()}
-        />
+        {isOwner && (
+          <TrackMenu
+            track={track}
+            noteCount={notes.length}
+            onGone={onGone}
+            onDeleted={() => void leave()}
+          />
+        )}
       </header>
 
       {versions && versions.length > 1 && (
@@ -412,6 +448,8 @@ function TrackView({
               <NoteRow
                 key={note.id}
                 note={note}
+                author={showAuthors ? personName(note.author, meId) : undefined}
+                controls={controlsFor(note)}
                 active={note.id === activeId}
                 editing={note.id === editing?.id}
                 onSeek={() => player.seek(note.timestampMs)}

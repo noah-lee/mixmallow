@@ -1,11 +1,13 @@
 import type { BrowserContext, Page, Route } from '@playwright/test';
-import { notes as notesTable, tracks } from '@repo/db';
-import { eq } from 'drizzle-orm';
+import { notes as notesTable, projectMembers, tracks } from '@repo/db';
+import { and, eq } from 'drizzle-orm';
 import { createTestApp } from '../../apps/api/test/helpers/app.ts';
 import {
+  createMember,
   createNote,
   createProject,
   createTrack,
+  createUser,
 } from '../../apps/api/test/helpers/factories.ts';
 import { wav } from '../support/audio.ts';
 import { STORAGE_ORIGIN, WEB_ORIGIN } from '../support/env.ts';
@@ -825,4 +827,267 @@ test('deleting the version', async ({ page, context }) => {
   await expect(
     page.getByRole('region', { name: 'Versions' }).getByRole('listitem'),
   ).toHaveCount(1);
+});
+
+const SAM_AVATAR = 'https://avatars.example.test/sam.png';
+const AVATAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#b8d8c8"/><circle cx="32" cy="26" r="12" fill="#4a3a2a"/><rect x="14" y="42" width="36" height="22" rx="11" fill="#c67a9c"/></svg>`;
+
+async function newUser(name: string, picture: string | null = null) {
+  const id = crypto.randomUUID();
+  return createUser(app.db, {
+    email: `user-${id}@example.com`,
+    authProviderId: `e2e-${id}`,
+    name,
+    picture,
+  });
+}
+
+async function addNote(
+  userId: string,
+  trackId: string,
+  at: number,
+  text: string,
+  done = false,
+) {
+  return createNote(app.db, {
+    userId,
+    trackId,
+    timestampMs: at,
+    text,
+    done,
+  });
+}
+
+// "Midnight Drive" owned by Maya Chen, with notes by Maya, Sam Rivera and a long-named member.
+// `as` picks who is signed in; both are members either way.
+async function seedSharedTrack(
+  context: BrowserContext,
+  as: 'owner' | 'collaborator',
+) {
+  const id = crypto.randomUUID();
+  const signedIn = await signedInUser(app, {
+    email: `e2e-${id}@example.com`,
+    name: as === 'owner' ? 'Maya Chen' : 'Sam Rivera',
+    authProviderId: `e2e-${id}`,
+  });
+  await context.addCookies(signedIn.cookies);
+  const other =
+    as === 'owner'
+      ? await newUser('Sam Rivera', SAM_AVATAR)
+      : await newUser('Maya Chen');
+  const [owner, sam] =
+    as === 'owner' ? [signedIn.user, other] : [other, signedIn.user];
+  const long = await newUser('Alexandra Montgomery-Vanderbilt the Third');
+  const project = await createProject(app.db, {
+    userId: owner.id,
+    name: 'Midnight Drive',
+  });
+  for (const member of [sam, long]) {
+    await createMember(app.db, { projectId: project.id, userId: member.id });
+  }
+  const track = await createTrack(app.db, {
+    userId: owner.id,
+    projectId: project.id,
+    name: 'Midnight Drive',
+    durationMs: DURATION_MS,
+    peaks: PEAKS,
+  });
+  await addNote(owner.id, track.id, 8_000, 'Intro pad a bit too wide', true);
+  await addNote(sam.id, track.id, 42_000, 'Kick and bass fighting at 60 Hz');
+  await addNote(long.id, track.id, 62_000, 'Chorus vocal too loud', true);
+  await addNote(sam.id, track.id, 151_000, 'Love this breakdown, keep it');
+  return { owner, sam, long, project, track };
+}
+
+const authorLine = (page: Page, text: string) =>
+  noteRow(page, text).getByTestId('note-author');
+const noteMenu = (page: Page, text: string) =>
+  noteRow(page, text).getByRole('button', { name: /More for note/ });
+const doneBox = (page: Page, text: string) =>
+  noteRow(page, text).getByRole('checkbox');
+
+test('owner on a shared project', async ({ page, context }) => {
+  await page.route(SAM_AVATAR, (route) =>
+    route.fulfill({ contentType: 'image/svg+xml', body: AVATAR_SVG }),
+  );
+  const { project, track } = await seedSharedTrack(context, 'owner');
+  await openTrack(page, project.id, track.id);
+  await expect(
+    page.getByRole('button', { name: 'Share', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Options for v1' }),
+  ).toBeVisible();
+  await expect(authorLine(page, 'Intro pad')).toHaveText('You');
+  await expect(authorLine(page, 'Kick and bass')).toHaveText('Sam Rivera');
+  await expect(authorLine(page, 'Chorus vocal')).toHaveText(
+    'Alexandra Montgomery-Vanderbilt the Third',
+  );
+  for (const text of ['Intro pad', 'Kick and bass', 'Chorus vocal']) {
+    await expect(doneBox(page, text)).toBeEnabled();
+  }
+  await noteMenu(page, 'Kick and bass').click();
+  await expect(page.getByRole('menuitem')).toHaveText(['Delete']);
+  await page.keyboard.press('Escape');
+  await noteMenu(page, 'Intro pad').click();
+  await expect(page.getByRole('menuitem')).toHaveText(['Edit', 'Delete']);
+  await page.keyboard.press('Escape');
+  await waitForAudio(page);
+  await captureScreenshot(page, 'track-owner-shared');
+});
+
+test("owner marks a collaborator's note done and deletes it, without undo", async ({
+  page,
+  context,
+}) => {
+  const { project, track } = await seedSharedTrack(context, 'owner');
+  await openTrack(page, project.id, track.id);
+  const saved = page.waitForResponse(
+    (res) => res.request().method() === 'PATCH' && res.ok(),
+  );
+  await doneBox(page, 'Kick and bass').click();
+  await saved;
+  await page.reload();
+  await expect(doneBox(page, 'Kick and bass')).toBeChecked();
+
+  await noteMenu(page, 'Kick and bass').click();
+  await page.getByRole('menuitem', { name: 'Delete' }).click();
+  await expect(noteRow(page, 'Kick and bass')).toHaveCount(0);
+  await expect(page.getByText('Note deleted')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Undo' })).toHaveCount(0);
+  await page.reload();
+  await expect(noteRows(page)).toHaveCount(3);
+});
+
+test('collaborator', async ({ page, context }) => {
+  const { project, track } = await seedSharedTrack(context, 'collaborator');
+  await openTrack(page, project.id, track.id);
+  await expect(
+    page.getByRole('button', { name: 'Members', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Share' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Options for/ })).toHaveCount(
+    0,
+  );
+  await expect(authorLine(page, 'Intro pad')).toHaveText('Maya Chen');
+  await expect(authorLine(page, 'Kick and bass')).toHaveText('You');
+  // Someone else's note: done state shown, not changeable, no menu.
+  await expect(doneBox(page, 'Intro pad')).toBeChecked();
+  await expect(doneBox(page, 'Intro pad')).toBeDisabled();
+  await expect(noteMenu(page, 'Intro pad')).toHaveCount(0);
+  await expect(doneBox(page, 'Chorus vocal')).toBeDisabled();
+  await expect(noteMenu(page, 'Chorus vocal')).toHaveCount(0);
+  // Their own note: as before.
+  await expect(doneBox(page, 'Kick and bass')).toBeEnabled();
+  await noteMenu(page, 'Kick and bass').click();
+  await expect(page.getByRole('menuitem')).toHaveText(['Edit', 'Delete']);
+  await page.keyboard.press('Escape');
+  await waitForAudio(page);
+  await captureScreenshot(page, 'track-collaborator');
+});
+
+test("tapping someone else's note still seeks", async ({ page, context }) => {
+  const { project, track } = await seedSharedTrack(context, 'collaborator');
+  await openTrack(page, project.id, track.id);
+  await waitForAudio(page);
+  await noteRow(page, 'Intro pad').getByRole('button').first().click();
+  await expect(currentTime(page)).toHaveText('0:08');
+});
+
+test('collaborator adds, edits and deletes their own note', async ({
+  page,
+  context,
+}) => {
+  const { project, track } = await seedSharedTrack(context, 'collaborator');
+  await openTrack(page, project.id, track.id);
+  await startNote(page);
+  await noteField(page).fill('Bass drop needs more sub');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(authorLine(page, 'Bass drop')).toHaveText('You');
+
+  await noteMenu(page, 'Bass drop').click();
+  await page.getByRole('menuitem', { name: 'Edit' }).click();
+  await expect(noteField(page)).toHaveValue('Bass drop needs more sub');
+  await noteField(page).fill('Bass drop needs more sub, try +2 dB');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(noteRow(page, 'try +2 dB')).toBeVisible();
+
+  await noteMenu(page, 'try +2 dB').click();
+  await page.getByRole('menuitem', { name: 'Delete' }).click();
+  await expect(noteRow(page, 'try +2 dB')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(authorLine(page, 'try +2 dB')).toHaveText('You');
+});
+
+test("a removed member's notes keep their name", async ({ page, context }) => {
+  const { user, project, track } = await seedTrack(context, []);
+  await addNote(user.id, track.id, 8_000, 'Intro pad a bit too wide');
+  const sam = await newUser('Sam Rivera');
+  await addNote(sam.id, track.id, 42_000, 'Kick and bass fighting at 60 Hz');
+  await openTrack(page, project.id, track.id);
+  await expect(authorLine(page, 'Intro pad')).toHaveText('You');
+  await expect(authorLine(page, 'Kick and bass')).toHaveText('Sam Rivera');
+  await noteMenu(page, 'Kick and bass').click();
+  await expect(page.getByRole('menuitem')).toHaveText(['Delete']);
+});
+
+test('a solo project shows no authors', async ({ page, context }) => {
+  const { project, track } = await seedTrack(context);
+  await openTrack(page, project.id, track.id);
+  await expect(noteRows(page)).toHaveCount(6);
+  await expect(notesRegion(page).getByTestId('note-author')).toHaveCount(0);
+});
+
+test.describe('a note change the server forbids', () => {
+  test.use({
+    expectedConsoleError: /Failed to load resource: .*status of 403/,
+  });
+
+  test('rolls back with a toast', async ({ page, context }) => {
+    const { project, track } = await seedSharedTrack(context, 'collaborator');
+    await page.route('**/api/notes/*', (route) =>
+      route.fulfill({ status: 403, json: { error: 'forbidden' } }),
+    );
+    await openTrack(page, project.id, track.id);
+    const done = doneBox(page, 'Love this breakdown');
+    await done.click();
+    await expect(page.getByText("You can't change that note.")).toBeVisible();
+    await expect(done).not.toBeChecked();
+
+    await noteMenu(page, 'Kick and bass').click();
+    await page.getByRole('menuitem', { name: 'Delete' }).click();
+    await expect(noteRow(page, 'Kick and bass')).toBeVisible();
+    await expect(page.getByText('Note deleted')).toHaveCount(0);
+
+    await noteMenu(page, 'Love this breakdown').click();
+    await page.getByRole('menuitem', { name: 'Edit' }).click();
+    await expect(noteField(page)).toHaveValue('Love this breakdown, keep it');
+    await noteField(page).fill('Love this breakdown, keep it as is');
+    await page.getByRole('button', { name: 'Save' }).click();
+    await expect(page.getByText('Edit note')).toBeHidden();
+    await expect(noteRow(page, 'Love this breakdown')).toHaveText(
+      /Love this breakdown, keep it$/,
+    );
+    await captureScreenshot(page, 'track-forbidden', { fullPage: false });
+  });
+});
+
+test('a removed collaborator gets not found', async ({ page, context }) => {
+  const { project, track, sam } = await seedSharedTrack(
+    context,
+    'collaborator',
+  );
+  await openTrack(page, project.id, track.id);
+  await app.db
+    .delete(projectMembers)
+    .where(
+      and(
+        eq(projectMembers.projectId, project.id),
+        eq(projectMembers.userId, sam.id),
+      ),
+    );
+  await page.reload();
+  await expect(
+    page.getByRole('heading', { name: "This track doesn't exist" }),
+  ).toBeVisible();
 });

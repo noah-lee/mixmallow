@@ -1,6 +1,7 @@
 import type { Note } from "@repo/shared/schemas"
 import { Ellipsis, Pencil, Trash2 } from "lucide-react"
 import { useRef } from "react"
+import { PersonAvatar } from "@/components/layout/user-avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -32,8 +33,13 @@ export function TimeChip({
   )
 }
 
+// What the viewer may do to this note; the api enforces the same rules.
+export type NoteControls = { edit: boolean; delete: boolean; done: boolean }
+
 export function NoteRow({
   note,
+  author,
+  controls,
   active,
   editing,
   onSeek,
@@ -42,6 +48,9 @@ export function NoteRow({
   onDelete,
 }: {
   note: Note
+  // Shown only on shared projects: "You" or the author's name.
+  author?: string | undefined
+  controls: NoteControls
   active: boolean
   editing: boolean
   onSeek: () => void
@@ -69,13 +78,24 @@ export function NoteRow({
       >
         <span className="sr-only">Play from </span>
         <TimeChip ms={note.timestampMs} className={cn(active && "bg-card")} />
-        <span
-          className={cn(
-            "min-w-0 break-words whitespace-pre-wrap",
-            note.done && "text-subtle-foreground line-through",
+        <span className="flex min-w-0 flex-col gap-1">
+          {author !== undefined && (
+            <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-muted-foreground">
+              <PersonAvatar person={note.author} size="sm" />
+              <span data-testid="note-author" className="truncate">
+                {author}
+              </span>
+            </span>
           )}
-        >
-          {note.text}
+          <span
+            className={cn(
+              "min-w-0 break-words whitespace-pre-wrap",
+              note.done && "text-subtle-foreground line-through",
+            )}
+          >
+            {author !== undefined && <span className="sr-only">: </span>}
+            {note.text}
+          </span>
         </span>
       </button>
       {note.done && (
@@ -86,49 +106,59 @@ export function NoteRow({
       <div className="mt-0.5 flex size-11 shrink-0 items-center justify-center">
         <Checkbox
           checked={note.done}
+          disabled={!controls.done}
           aria-label={`Done: note at ${time}`}
           onCheckedChange={(checked) => onDoneChange(checked === true)}
         />
       </div>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="mt-0.5 mr-0.5"
-            aria-label={`More for note at ${time}`}
-          >
-            <Ellipsis />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="end"
-          onCloseAutoFocus={(event) => {
-            if (!editingRef.current) return
-            editingRef.current = false
-            event.preventDefault()
-            onEdit()
-          }}
-        >
-          <DropdownMenuItem
-            className="min-h-11"
-            onSelect={() => {
-              editingRef.current = true
+      {!(controls.edit || controls.delete) ? (
+        // Keeps the done checkboxes in one column down the list.
+        <div aria-hidden className="mr-0.5 size-11 shrink-0" />
+      ) : (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="mt-0.5 mr-0.5"
+              aria-label={`More for note at ${time}`}
+            >
+              <Ellipsis />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            onCloseAutoFocus={(event) => {
+              if (!editingRef.current) return
+              editingRef.current = false
+              event.preventDefault()
+              onEdit()
             }}
           >
-            <Pencil />
-            Edit
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className="min-h-11"
-            variant="destructive"
-            onSelect={onDelete}
-          >
-            <Trash2 />
-            Delete
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+            {controls.edit && (
+              <DropdownMenuItem
+                className="min-h-11"
+                onSelect={() => {
+                  editingRef.current = true
+                }}
+              >
+                <Pencil />
+                Edit
+              </DropdownMenuItem>
+            )}
+            {controls.delete && (
+              <DropdownMenuItem
+                className="min-h-11"
+                variant="destructive"
+                onSelect={onDelete}
+              >
+                <Trash2 />
+                Delete
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </li>
   )
 }
