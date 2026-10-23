@@ -182,7 +182,7 @@ function InviteCard({
           </span>{" "}
           invited you to collaborate on
         </p>
-        <h1 className="text-display text-balance [overflow-wrap:anywhere]">
+        <h1 className="text-display text-balance wrap-anywhere">
           {invite.projectName}
         </h1>
         <p className="text-pretty text-muted-foreground">
@@ -211,7 +211,7 @@ function JoinButton({
     <Button
       ref={ref}
       size="lg"
-      className="w-full aria-disabled:pointer-events-none sm:w-auto"
+      className="w-full aria-disabled:pointer-events-none aria-disabled:opacity-80 sm:w-auto sm:min-w-48"
       aria-disabled={joining}
       aria-busy={joining}
       onClick={() => {
@@ -227,7 +227,10 @@ function JoinButton({
 function ProjectFull({ ownerName }: { ownerName: string | null }) {
   const firstName = ownerName?.trim().split(/\s+/)[0]
   return (
-    <Alert role="status" className="text-left">
+    <Alert
+      role="status"
+      className="border-transparent bg-warning-tint text-left text-warning *:data-[slot=alert-description]:text-warning *:[svg]:text-current"
+    >
       <Users />
       <AlertTitle>This project is full</AlertTitle>
       <AlertDescription>
@@ -239,7 +242,7 @@ function ProjectFull({ ownerName }: { ownerName: string | null }) {
 
 function InvalidInvite({ signedIn }: { signedIn: boolean }) {
   return (
-    <Empty className="p-6 sm:p-12">
+    <Empty className="justify-start p-6 sm:p-12">
       <EmptyMedia variant="icon">
         <Link2Off />
       </EmptyMedia>

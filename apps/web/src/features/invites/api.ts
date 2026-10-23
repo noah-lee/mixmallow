@@ -36,9 +36,11 @@ export function useJoinInvite(token: string) {
       const { data } = await api.post(`/invites/${token}/join`)
       return joinResponseSchema.parse(data)
     },
-    // Also drops a cached 404 from visiting the project before joining.
+    // Also drops a cached 404 from visiting the project before joining, and the cached
+    // non-membership so reopening the link doesn't flash the Join card.
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: PROJECTS_QUERY_KEY })
+      void qc.invalidateQueries({ queryKey: inviteKey(token) })
     },
   })
 }
