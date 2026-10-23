@@ -11,7 +11,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
-  projectKey,
   removeTrack,
   useDeleteTrack,
   useRenameTrack,
@@ -44,9 +43,6 @@ export function TrackMenu({
   const [deleting, setDeleting] = useState(false)
   const menuRef = useRef<HTMLButtonElement>(null)
   const label = `v${track.version}`
-  // A 403 means this user's rights changed under the page; reload what decides the menu.
-  const refetchRights = () =>
-    void qc.invalidateQueries({ queryKey: projectKey(track.projectId) })
 
   const save = async (name: string): Promise<RenameResult> => {
     try {
@@ -59,7 +55,10 @@ export function TrackMenu({
         onGone()
         return "gone"
       }
-      if (status === 403) refetchRights()
+      if (status === 403) {
+        toast.error(`You can't rename ${label}.`)
+        return "gone"
+      }
       return status === 400 ? "invalid" : "failed"
     }
   }
@@ -73,7 +72,11 @@ export function TrackMenu({
           onDeleted()
           return
         }
-        if (httpStatus(err) === 403) refetchRights()
+        if (httpStatus(err) === 403) {
+          setDeleting(false)
+          toast.error(`You can't delete ${label}.`)
+          return
+        }
         toast.error(`Couldn't delete ${label}. Try again.`)
       },
     })

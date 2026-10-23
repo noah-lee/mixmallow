@@ -164,6 +164,14 @@ async function startNote(page: Page) {
   await noteField(page).click();
 }
 
+// Closing a menu leaves focus on its button, scrolled under the sticky header and player.
+async function resetView(page: Page) {
+  // A string, so it isn't typechecked without the DOM lib.
+  await page.evaluate(
+    '(document.activeElement)?.blur(); window.scrollTo(0, 0)',
+  );
+}
+
 async function waitForAudio(page: Page) {
   await expect(playButton(page)).not.toHaveAttribute('aria-busy');
 }
@@ -1078,6 +1086,7 @@ test('owner on a shared project', async ({ page, context }) => {
   await expect(page.getByRole('menuitem')).toHaveText(['Edit', 'Delete']);
   await page.keyboard.press('Escape');
   await waitForAudio(page);
+  await resetView(page);
   await captureScreenshot(page, 'track-owner-shared');
 });
 
@@ -1129,6 +1138,7 @@ test('collaborator', async ({ page, context }) => {
   await expect(page.getByRole('menuitem')).toHaveText(['Edit', 'Delete']);
   await page.keyboard.press('Escape');
   await waitForAudio(page);
+  await resetView(page);
   await captureScreenshot(page, 'track-collaborator');
 });
 
@@ -1170,6 +1180,18 @@ test("collaborator ticks someone else's note undone and done", async ({
   context,
 }) => {
   const { project, track } = await seedSharedTrack(context, 'collaborator');
+  const storedDone = async () => {
+    const [note] = await app.db
+      .select({ done: notesTable.done })
+      .from(notesTable)
+      .where(
+        and(
+          eq(notesTable.trackId, track.id),
+          eq(notesTable.text, 'Intro pad a bit too wide'),
+        ),
+      );
+    return note?.done;
+  };
   await openTrack(page, project.id, track.id);
   const saved = () =>
     page.waitForResponse(
@@ -1180,11 +1202,13 @@ test("collaborator ticks someone else's note undone and done", async ({
   await intro.click();
   await expect(intro).not.toBeChecked();
   await patch;
+  expect(await storedDone()).toBe(false);
   await page.reload();
   await expect(intro).not.toBeChecked();
   patch = saved();
   await intro.click();
   await patch;
+  expect(await storedDone()).toBe(true);
   await page.reload();
   await expect(intro).toBeChecked();
   await expect(
@@ -1251,27 +1275,35 @@ test.describe('a version change the server forbids', () => {
     expectedConsoleError: /Failed to load resource: .*status of 403/,
   });
 
-  test('deleting shows a toast and keeps the version', async ({
+  test('renaming and deleting close with a toast and keep the version', async ({
     page,
     context,
   }) => {
     const shared = await seedSharedTrack(context, 'collaborator');
     const samMix = await addSamVersion(shared);
     await page.route(`**/api/tracks/${samMix.id}`, (route) =>
-      route.request().method() === 'DELETE'
-        ? route.fulfill({ status: 403, json: { error: 'forbidden' } })
-        : route.fallback(),
+      route.request().method() === 'GET'
+        ? route.fallback()
+        : route.fulfill({ status: 403, json: { error: 'forbidden' } }),
     );
     await openTrack(page, shared.project.id, samMix.id);
     await page.getByRole('button', { name: 'Options for v2' }).click();
+    await page.getByRole('menuitem', { name: 'Rename v2' }).click();
+    const rename = page.getByRole('dialog', { name: 'Rename v2' });
+    await rename.getByRole('textbox', { name: 'Name' }).fill('Sam mix 2');
+    await rename.getByRole('button', { name: 'Save' }).click();
+    await expect(rename).toBeHidden();
+    await expect(page.getByText("You can't rename v2.")).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+      'v2Midnight Drive — Sam mix',
+    );
+
+    await page.getByRole('button', { name: 'Options for v2' }).click();
     await page.getByRole('menuitem', { name: 'Delete v2' }).click();
-    await page
-      .getByRole('alertdialog')
-      .getByRole('button', { name: 'Delete' })
-      .click();
-    await expect(
-      page.getByText("Couldn't delete v2. Try again."),
-    ).toBeVisible();
+    const remove = page.getByRole('alertdialog');
+    await remove.getByRole('button', { name: 'Delete' }).click();
+    await expect(remove).toBeHidden();
+    await expect(page.getByText("You can't delete v2.")).toBeVisible();
     await expect(page).toHaveURL(
       `${WEB_ORIGIN}${trackUrl(shared.project.id, samMix.id)}`,
     );
