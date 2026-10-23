@@ -26,9 +26,17 @@ test('default', async ({ page }) => {
     ).toBeVisible();
   }
   await expect(
-    page.getByText('up to 1 project', { exact: true }),
+    page.getByText('up to 3 projects', { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText(/100 MB of stored audio/)).toBeVisible();
+  await expect(
+    page.getByText(
+      'up to 500 MB of stored audio in total, with each file up to 20 MB',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText('MP3, AAC or M4A files only', { exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByText(
       "up to 500 notes on each version, counting every member's notes",
@@ -42,10 +50,23 @@ test('default', async ({ page }) => {
     ),
   ).toBeVisible();
   await expect(
-    page.getByText('up to 10 collaborators on each project', { exact: true }),
+    page.getByText('up to 1 collaborator on each project', { exact: true }),
   ).toBeVisible();
   await expect(page.getByText(/Stripe|subscription/)).toHaveCount(0);
+  await expect(page.getByText(/\bPro\b|upgrade|coming soon/i)).toHaveCount(0);
   await captureScreenshot(page, 'terms-default');
+});
+
+test('limits', async ({ page }) => {
+  await page.goto('/terms');
+  await page
+    .getByRole('heading', { level: 2, name: 'Free plan limits' })
+    .scrollIntoViewIfNeeded();
+  await expect(
+    page.getByText(/count toward their owner's limits/),
+  ).toBeVisible();
+  await page.evaluate('window.scrollBy(0, -16)');
+  await captureScreenshot(page, 'terms-limits', { fullPage: false });
 });
 
 test('sharing', async ({ page }) => {

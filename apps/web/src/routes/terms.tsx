@@ -1,11 +1,11 @@
-import { NOTE_LIMIT_PER_TRACK, PLANS } from "@repo/shared/schemas"
+import { formatList, NOTE_LIMIT_PER_TRACK, PLANS } from "@repo/shared/schemas"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import {
   ContactLink,
   LegalPage,
   LegalSection,
 } from "@/features/legal/legal-page"
-import { formatBytes } from "@/lib/format"
+import { formatBytes, plural } from "@/lib/format"
 import { site } from "@/lib/site"
 
 // Public: Google's OAuth brand verification reads this page. The plan limits come from the
@@ -34,22 +34,21 @@ function Terms() {
       <LegalSection title="Free plan limits">
         <p>Each account can own:</p>
         <ul>
-          <li>
-            up to {PLANS.free.projectLimit}{" "}
-            {PLANS.free.projectLimit === 1 ? "project" : "projects"}
-          </li>
+          <li>up to {plural(PLANS.free.projectLimit, "project")}</li>
           <li>
             up to {formatBytes(PLANS.free.storageLimitBytes)} of stored audio in
             total
             {PLANS.free.maxFileBytes < PLANS.free.storageLimitBytes &&
               `, with each file up to ${formatBytes(PLANS.free.maxFileBytes)}`}
           </li>
+          <li>{formatList(PLANS.free.acceptedFormats)} files only</li>
+          <li>
+            up to {plural(PLANS.free.collaboratorLimit, "collaborator")} on each
+            project
+          </li>
           <li>
             up to {NOTE_LIMIT_PER_TRACK} notes on each version, counting every
             member's notes
-          </li>
-          <li>
-            up to {PLANS.free.collaboratorLimit} collaborators on each project
           </li>
         </ul>
         <p>
