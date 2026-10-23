@@ -1029,6 +1029,29 @@ const noteMenu = (page: Page, text: string) =>
   noteRow(page, text).getByRole('button', { name: /More for note/ });
 const doneBox = (page: Page, text: string) =>
   noteRow(page, text).getByRole('checkbox');
+const uploaderLine = (page: Page) => page.getByTestId('track-uploader');
+
+// v2 "Midnight Drive — Sam mix", uploaded by Sam on top of the shared project's v1.
+async function addSamVersion(
+  shared: Awaited<ReturnType<typeof seedSharedTrack>>,
+) {
+  const samMix = await createTrack(app.db, {
+    userId: shared.sam.id,
+    projectId: shared.project.id,
+    name: 'Midnight Drive — Sam mix',
+    durationMs: DURATION_MS,
+    peaks: PEAKS,
+  });
+  await addNote(
+    shared.owner.id,
+    samMix.id,
+    42_000,
+    'Kick and bass fighting around 60 Hz',
+    true,
+  );
+  await addNote(shared.sam.id, samMix.id, 151_000, 'Breakdown could go longer');
+  return samMix;
+}
 
 test('owner on a shared project', async ({ page, context }) => {
   const { project, track } = await seedSharedTrack(context, 'owner');
@@ -1039,6 +1062,7 @@ test('owner on a shared project', async ({ page, context }) => {
   await expect(
     page.getByRole('button', { name: 'Options for v1' }),
   ).toBeVisible();
+  await expect(uploaderLine(page)).toHaveText('Uploaded by you');
   await expect(authorLine(page, 'Intro pad')).toHaveText('You');
   await expect(authorLine(page, 'Kick and bass')).toHaveText('Sam Rivera');
   await expect(authorLine(page, 'Chorus vocal')).toHaveText(
@@ -1090,13 +1114,14 @@ test('collaborator', async ({ page, context }) => {
   await expect(page.getByRole('button', { name: /^Options for/ })).toHaveCount(
     0,
   );
+  await expect(uploaderLine(page)).toHaveText('Uploaded by Maya Chen');
   await expect(authorLine(page, 'Intro pad')).toHaveText('Maya Chen');
   await expect(authorLine(page, 'Kick and bass')).toHaveText('You');
-  // Someone else's note: done state shown, not changeable, no menu.
+  // Someone else's note: any member can tick it, but there's no menu.
   await expect(doneBox(page, 'Intro pad')).toBeChecked();
-  await expect(doneBox(page, 'Intro pad')).toBeDisabled();
+  await expect(doneBox(page, 'Intro pad')).toBeEnabled();
   await expect(noteMenu(page, 'Intro pad')).toHaveCount(0);
-  await expect(doneBox(page, 'Chorus vocal')).toBeDisabled();
+  await expect(doneBox(page, 'Chorus vocal')).toBeEnabled();
   await expect(noteMenu(page, 'Chorus vocal')).toHaveCount(0);
   // Their own note: as before.
   await expect(doneBox(page, 'Kick and bass')).toBeEnabled();
@@ -1105,6 +1130,152 @@ test('collaborator', async ({ page, context }) => {
   await page.keyboard.press('Escape');
   await waitForAudio(page);
   await captureScreenshot(page, 'track-collaborator');
+});
+
+test('collaborator on their own version', async ({ page, context }) => {
+  const shared = await seedSharedTrack(context, 'collaborator');
+  const samMix = await addSamVersion(shared);
+  await openTrack(page, shared.project.id, samMix.id);
+  await expect(uploaderLine(page)).toHaveText('Uploaded by you');
+  await page.getByRole('button', { name: 'Options for v2' }).click();
+  await expect(page.getByRole('menuitem')).toHaveText([
+    'Rename v2',
+    'Delete v2',
+  ]);
+  await page.keyboard.press('Escape');
+  await waitForAudio(page);
+  await captureScreenshot(page, 'track-collaborator-own-version');
+});
+
+test("owner on a collaborator's version", async ({ page, context }) => {
+  const shared = await seedSharedTrack(context, 'owner');
+  const samMix = await addSamVersion(shared);
+  await openTrack(page, shared.project.id, samMix.id);
+  await expect(uploaderLine(page)).toHaveText('Uploaded by Sam Rivera');
+  await expect(
+    page.getByRole('button', { name: 'Options for v2' }),
+  ).toBeVisible();
+  await waitForAudio(page);
+  await captureScreenshot(page, 'track-owner-collaborator-version');
+});
+
+test('a solo project shows no uploader', async ({ page, context }) => {
+  const { project, track } = await seedTrack(context);
+  await openTrack(page, project.id, track.id);
+  await expect(uploaderLine(page)).toHaveCount(0);
+});
+
+test("collaborator ticks someone else's note undone and done", async ({
+  page,
+  context,
+}) => {
+  const { project, track } = await seedSharedTrack(context, 'collaborator');
+  await openTrack(page, project.id, track.id);
+  const saved = () =>
+    page.waitForResponse(
+      (res) => res.request().method() === 'PATCH' && res.ok(),
+    );
+  const intro = doneBox(page, 'Intro pad');
+  let patch = saved();
+  await intro.click();
+  await expect(intro).not.toBeChecked();
+  await patch;
+  await page.reload();
+  await expect(intro).not.toBeChecked();
+  patch = saved();
+  await intro.click();
+  await patch;
+  await page.reload();
+  await expect(intro).toBeChecked();
+  await expect(
+    page.getByRole('heading', { name: '4 notes · 2 done' }),
+  ).toBeVisible();
+});
+
+test.describe("a done toggle on someone else's note that fails", () => {
+  test.use({
+    expectedConsoleError: /Failed to load resource: .*status of 500/,
+  });
+
+  test('rolls back with a toast', async ({ page, context }) => {
+    const { project, track } = await seedSharedTrack(context, 'collaborator');
+    await page.route('**/api/notes/*', (route) =>
+      route.fulfill({ status: 500, json: { error: 'internal' } }),
+    );
+    await openTrack(page, project.id, track.id);
+    const chorus = doneBox(page, 'Chorus vocal');
+    await chorus.click();
+    await expect(
+      page.getByText("Couldn't update the note. Try again."),
+    ).toBeVisible();
+    await expect(chorus).toBeChecked();
+    await captureScreenshot(page, 'track-collaborator-done-failed', {
+      fullPage: false,
+    });
+  });
+});
+
+test('collaborator renames and deletes their own version', async ({
+  page,
+  context,
+}) => {
+  const shared = await seedSharedTrack(context, 'collaborator');
+  const samMix = await addSamVersion(shared);
+  await openTrack(page, shared.project.id, samMix.id);
+  await page.getByRole('button', { name: 'Options for v2' }).click();
+  await page.getByRole('menuitem', { name: 'Rename v2' }).click();
+  await page
+    .getByRole('textbox', { name: 'Name' })
+    .fill('Midnight Drive — Sam mix 2');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+    'v2Midnight Drive — Sam mix 2',
+  );
+
+  await page.getByRole('button', { name: 'Options for v2' }).click();
+  await page.getByRole('menuitem', { name: 'Delete v2' }).click();
+  const dialog = page.getByRole('alertdialog');
+  // Everyone's notes go with it, so the count includes the owner's.
+  await expect(dialog).toContainText('Delete v2 and its 2 notes?');
+  await dialog.getByRole('button', { name: 'Delete' }).click();
+  await expect(page).toHaveURL(
+    `${WEB_ORIGIN}/app/projects/${shared.project.id}`,
+  );
+  await expect(
+    page.getByRole('region', { name: 'Versions' }).getByRole('listitem'),
+  ).toHaveCount(1);
+});
+
+test.describe('a version change the server forbids', () => {
+  test.use({
+    expectedConsoleError: /Failed to load resource: .*status of 403/,
+  });
+
+  test('deleting shows a toast and keeps the version', async ({
+    page,
+    context,
+  }) => {
+    const shared = await seedSharedTrack(context, 'collaborator');
+    const samMix = await addSamVersion(shared);
+    await page.route(`**/api/tracks/${samMix.id}`, (route) =>
+      route.request().method() === 'DELETE'
+        ? route.fulfill({ status: 403, json: { error: 'forbidden' } })
+        : route.fallback(),
+    );
+    await openTrack(page, shared.project.id, samMix.id);
+    await page.getByRole('button', { name: 'Options for v2' }).click();
+    await page.getByRole('menuitem', { name: 'Delete v2' }).click();
+    await page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: 'Delete' })
+      .click();
+    await expect(
+      page.getByText("Couldn't delete v2. Try again."),
+    ).toBeVisible();
+    await expect(page).toHaveURL(
+      `${WEB_ORIGIN}${trackUrl(shared.project.id, samMix.id)}`,
+    );
+  });
 });
 
 test("tapping someone else's note still seeks", async ({ page, context }) => {

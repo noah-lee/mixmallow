@@ -13,6 +13,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import { ChevronLeft, CircleAlert, Plus } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
+import { PersonAvatar } from "@/components/layout/user-avatar"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {
@@ -193,12 +194,19 @@ function TrackView({
   const isOwner = project?.role === "owner"
   const controlsFor = (note: Note): NoteControls => {
     const own = meId !== undefined && note.author.id === meId
-    return { edit: own, delete: own || isOwner, done: own || isOwner }
+    return { edit: own, delete: own || isOwner, done: true }
   }
+  // The server lets the owner manage any version and an uploader their own.
+  const canManageTrack =
+    isOwner || (meId !== undefined && track.uploader.id === meId)
   // A solo project looks as it did before sharing; a removed member's notes still need names.
-  const showAuthors =
-    (project?.collaboratorCount ?? 0) > 0 ||
-    new Set(notes.map((n) => n.author.id)).size > 1
+  const shared = (project?.collaboratorCount ?? 0) > 0
+  const showAuthors = shared || new Set(notes.map((n) => n.author.id)).size > 1
+  // Same rule as the project page's version rows.
+  const showUploader =
+    shared ||
+    new Set([track.uploader.id, ...(versions ?? []).map((v) => v.uploader.id)])
+      .size > 1
 
   const atLimit = notes.length >= NOTE_LIMIT_PER_TRACK
   const doneCount = notes.filter((n) => n.done).length
@@ -372,31 +380,45 @@ function TrackView({
 
   return (
     <div className="flex flex-col gap-4 lg:gap-6">
-      <header className="flex items-start gap-2">
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <Link
-            to="/app/projects/$projectId"
-            params={{ projectId: track.projectId }}
-            className="-ml-1 inline-flex min-h-11 items-center gap-1 self-start rounded-full pr-2 text-sm font-semibold text-primary-text outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <ChevronLeft className="size-4" />
-            <span className="break-words">{project?.name ?? "Project"}</span>
-          </Link>
-          <h1 className="text-heading-2 break-words">
-            <span className="mr-2 font-mono text-muted-foreground tabular-nums">
-              v{track.version}
-            </span>
-            {track.name}
-          </h1>
+      {/* Actions share the back-link row so the title keeps the full width on phones. */}
+      <header className="flex flex-col gap-1">
+        <div className="flex items-start gap-2">
+          <div className="flex min-w-0 flex-1">
+            <Link
+              to="/app/projects/$projectId"
+              params={{ projectId: track.projectId }}
+              className="-ml-1 inline-flex min-h-11 min-w-0 items-center gap-1 rounded-full pr-2 text-sm font-semibold text-primary-text outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ChevronLeft className="size-4 shrink-0" />
+              <span className="min-w-0 break-words">
+                {project?.name ?? "Project"}
+              </span>
+            </Link>
+          </div>
+          {project && <ShareButton project={project} onGone={onGone} />}
+          {canManageTrack && (
+            <TrackMenu
+              track={track}
+              noteCount={notes.length}
+              onGone={onGone}
+              onDeleted={() => void leave()}
+            />
+          )}
         </div>
-        {project && <ShareButton project={project} onGone={onGone} />}
-        {isOwner && (
-          <TrackMenu
-            track={track}
-            noteCount={notes.length}
-            onGone={onGone}
-            onDeleted={() => void leave()}
-          />
+        <h1 className="text-heading-2 break-words">
+          <span className="mr-2 font-mono text-muted-foreground tabular-nums">
+            v{track.version}
+          </span>
+          {track.name}
+        </h1>
+        {showUploader && (
+          <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-muted-foreground">
+            <PersonAvatar person={track.uploader} size="sm" />
+            <span data-testid="track-uploader" className="truncate">
+              Uploaded by{" "}
+              {track.uploader.id === meId ? "you" : personName(track.uploader)}
+            </span>
+          </p>
         )}
       </header>
 
