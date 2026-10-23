@@ -618,6 +618,9 @@ test.describe('a version change the server forbids', () => {
     await expect(remove).toBeHidden();
     await expect(page.getByText("You can't delete v2.")).toBeVisible();
     await expect(rows(page).getByRole('listitem')).toHaveCount(3);
+    await captureScreenshot(page, 'project-version-forbidden', {
+      fullPage: false,
+    });
   });
 });
 
