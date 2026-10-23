@@ -15,6 +15,7 @@ import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ShowcaseRouteImport } from './routes/showcase'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AppAccountRouteImport } from './routes/_app/account'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as AppAppIndexRouteImport } from './routes/_app/app/index'
 import { Route as AppAppStartRouteImport } from './routes/_app/app/start'
 import { Route as AppAppProjectsIndexRouteImport } from './routes/_app/app/projects/index'
@@ -50,6 +51,11 @@ const AppAccountRoute = AppAccountRouteImport.update({
   path: '/account',
   getParentRoute: () => AppRoute,
 } as any)
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppAppIndexRoute = AppAppIndexRouteImport.update({
   id: '/app/',
   path: '/app/',
@@ -84,6 +90,7 @@ export interface FileRoutesByFullPath {
   '/showcase': typeof ShowcaseRoute
   '/terms': typeof TermsRoute
   '/account': typeof AppAccountRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/app/start': typeof AppAppStartRoute
   '/app/': typeof AppAppIndexRoute
   '/app/projects/': typeof AppAppProjectsIndexRoute
@@ -96,6 +103,7 @@ export interface FileRoutesByTo {
   '/showcase': typeof ShowcaseRoute
   '/terms': typeof TermsRoute
   '/account': typeof AppAccountRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/app/start': typeof AppAppStartRoute
   '/app': typeof AppAppIndexRoute
   '/app/projects': typeof AppAppProjectsIndexRoute
@@ -110,6 +118,7 @@ export interface FileRoutesById {
   '/showcase': typeof ShowcaseRoute
   '/terms': typeof TermsRoute
   '/_app/account': typeof AppAccountRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/_app/app/start': typeof AppAppStartRoute
   '/_app/app/': typeof AppAppIndexRoute
   '/_app/app/projects/': typeof AppAppProjectsIndexRoute
@@ -124,6 +133,7 @@ export interface FileRouteTypes {
     | '/showcase'
     | '/terms'
     | '/account'
+    | '/invite/$token'
     | '/app/start'
     | '/app/'
     | '/app/projects/'
@@ -136,6 +146,7 @@ export interface FileRouteTypes {
     | '/showcase'
     | '/terms'
     | '/account'
+    | '/invite/$token'
     | '/app/start'
     | '/app'
     | '/app/projects'
@@ -149,6 +160,7 @@ export interface FileRouteTypes {
     | '/showcase'
     | '/terms'
     | '/_app/account'
+    | '/invite/$token'
     | '/_app/app/start'
     | '/_app/app/'
     | '/_app/app/projects/'
@@ -162,6 +174,7 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute
   ShowcaseRoute: typeof ShowcaseRoute
   TermsRoute: typeof TermsRoute
+  InviteTokenRoute: typeof InviteTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -207,6 +220,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/account'
       preLoaderRoute: typeof AppAccountRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_app/app/': {
       id: '/_app/app/'
@@ -273,6 +293,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   ShowcaseRoute: ShowcaseRoute,
   TermsRoute: TermsRoute,
+  InviteTokenRoute: InviteTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
