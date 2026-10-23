@@ -319,7 +319,6 @@ function InviteLinkSection({
           readOnly
           value={url}
           aria-label="Invite link"
-          className="font-mono text-sm"
           onFocus={(event) => event.currentTarget.select()}
         />
         <Button
@@ -332,14 +331,14 @@ function InviteLinkSection({
         <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
-            className="h-11 flex-1 sm:flex-none"
+            className="flex-1 sm:flex-none"
             onClick={() => setConfirming("reset")}
           >
             Reset link
           </Button>
           <Button
             variant="outline"
-            className="h-11 flex-1 sm:flex-none"
+            className="flex-1 sm:flex-none"
             onClick={() => setConfirming("off")}
           >
             Turn off link
@@ -481,7 +480,7 @@ function MemberList({
               owner && member.role === "collaborator" ? (
                 <Button
                   variant="ghost"
-                  className="h-11 shrink-0 px-4"
+                  className="-mr-3 h-11 shrink-0 px-4"
                   aria-label={`Remove ${personName(member, meId)}`}
                   onClick={() => {
                     setRemoving(member)
