@@ -103,7 +103,7 @@ export function NoteRow({
           Done
         </Badge>
       )}
-      <div className="mt-0.5 flex size-11 shrink-0 items-center justify-center">
+      <div className="mt-1 flex size-11 shrink-0 items-center justify-center">
         <Checkbox
           checked={note.done}
           disabled={!controls.done}
@@ -115,14 +115,14 @@ export function NoteRow({
       </div>
       {!(controls.edit || controls.delete) ? (
         // Keeps the done checkboxes in one column down the list.
-        <div aria-hidden className="mr-1 size-11 shrink-0" />
+        <div aria-hidden className="mr-1.5 size-11 shrink-0" />
       ) : (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              className="mt-0.5 mr-1"
+              className="mt-1 mr-1.5"
               aria-label={`More for note at ${time}`}
             >
               <Ellipsis />

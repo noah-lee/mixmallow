@@ -480,7 +480,7 @@ function MemberList({
               owner && member.role === "collaborator" ? (
                 <Button
                   variant="ghost"
-                  className="-mr-3 h-11 shrink-0 px-4"
+                  className="-mr-4 h-11 shrink-0 px-4"
                   aria-label={`Remove ${personName(member, meId)}`}
                   onClick={() => {
                     setRemoving(member)
