@@ -71,13 +71,6 @@ function Project({ projectId }: { projectId: string }) {
     enabled: owner && (project.data?.collaboratorCount ?? 0) > 0,
   })
   const [gone, setGone] = useState(false)
-  const titleRef = useRef<HTMLHeadingElement>(null)
-  const versionsRef = useRef<HTMLHeadingElement>(null)
-  // A deleted row takes its menu button with it.
-  const focusAfterDelete = useCallback(
-    () => (versionsRef.current ?? titleRef.current)?.focus(),
-    [],
-  )
 
   const maxFileBytes = usage?.maxFileBytes ?? MAX_FILE_BYTES
   // Owner only: a collaborator never sees the owner's storage numbers.
@@ -168,13 +161,7 @@ function Project({ projectId }: { projectId: string }) {
       <div className="flex flex-col gap-3">
         <div className="flex items-start gap-2">
           <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <h1
-              ref={titleRef}
-              tabIndex={-1}
-              className="text-heading-1 break-words outline-none"
-            >
-              {project.data.name}
-            </h1>
+            <h1 className="text-heading-1 break-words">{project.data.name}</h1>
             {!owner && (
               <p className="text-sm text-muted-foreground">
                 Shared by {personName(project.data.owner)}
@@ -234,10 +221,8 @@ function Project({ projectId }: { projectId: string }) {
           {dropzone(false)}
           <section aria-labelledby="versions" className="flex flex-col gap-3">
             <h2
-              ref={versionsRef}
               id="versions"
-              tabIndex={-1}
-              className="text-label tracking-wide text-muted-foreground uppercase outline-none"
+              className="text-label tracking-wide text-muted-foreground uppercase"
             >
               Versions
             </h2>
@@ -255,8 +240,6 @@ function Project({ projectId }: { projectId: string }) {
                 <VersionRow
                   key={track.id}
                   track={track}
-                  onDeleted={focusAfterDelete}
-                  canManage={owner || track.uploader.id === meId}
                   uploadedBy={
                     showUploaders
                       ? `Uploaded by ${track.uploader.id === meId ? "you" : personName(track.uploader)}`

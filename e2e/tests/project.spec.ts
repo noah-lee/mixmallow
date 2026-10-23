@@ -1,6 +1,6 @@
 import { closeSync, ftruncateSync, openSync } from 'node:fs';
 import type { BrowserContext, Page } from '@playwright/test';
-import { projectMembers, tracks as trackTable } from '@repo/db';
+import { projectMembers } from '@repo/db';
 import { and, eq } from 'drizzle-orm';
 import { createTestApp } from '../../apps/api/test/helpers/app.ts';
 import {
@@ -556,114 +556,6 @@ test.describe('a rename the server refuses', () => {
   });
 });
 
-test('rename a version', async ({ page, context }) => {
-  const { project } = await seedProject(context);
-  await openProject(page, project.id);
-  await page.getByRole('button', { name: 'More for v2' }).click();
-  await page.getByRole('menuitem', { name: 'Rename' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Rename v2' });
-  await dialog.getByLabel('Name').fill('Midnight Drive — wider chorus');
-  await dialog.getByRole('button', { name: 'Save' }).click();
-  await expect(dialog).toBeHidden();
-  await expect(row(page, 'v2')).toContainText('Midnight Drive — wider chorus');
-});
-
-test('delete a version', async ({ page, context }) => {
-  const { project } = await seedProject(context);
-  await openProject(page, project.id);
-  await page.getByRole('button', { name: 'More for v2' }).click();
-  await page.getByRole('menuitem', { name: 'Delete' }).click();
-  const dialog = page.getByRole('alertdialog', {
-    name: 'Delete v2 and its 7 notes?',
-  });
-  await expect(dialog).toBeVisible();
-  await captureScreenshot(page, 'project-delete-version', { fullPage: false });
-
-  await dialog.getByRole('button', { name: 'Delete' }).click();
-  await expect(dialog).toBeHidden();
-  await expect(rows(page).getByRole('listitem')).toHaveCount(2);
-  await expect(row(page, 'v2')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Versions' })).toBeFocused();
-  await expect(page.getByText('51.9 MB of 100 MB')).toBeVisible();
-});
-
-test.describe('a version change the server forbids', () => {
-  test.use({
-    expectedConsoleError: /Failed to load resource: .*status of 403/,
-  });
-
-  test('closes the dialog with a toast', async ({ page, context }) => {
-    const { project, tracks } = await seedProject(context);
-    await page.route(`**/api/tracks/${tracks[1]?.id}`, (route) =>
-      route.request().method() === 'GET'
-        ? route.fallback()
-        : route.fulfill({ status: 403, json: { error: 'forbidden' } }),
-    );
-    await openProject(page, project.id);
-
-    await page.getByRole('button', { name: 'More for v2' }).click();
-    await page.getByRole('menuitem', { name: 'Rename' }).click();
-    const rename = page.getByRole('dialog', { name: 'Rename v2' });
-    await rename.getByLabel('Name').fill('Midnight Drive — wider chorus');
-    await rename.getByRole('button', { name: 'Save' }).click();
-    await expect(rename).toBeHidden();
-    await expect(page.getByText("You can't rename v2.")).toBeVisible();
-    await expect(row(page, 'v2')).toContainText('Midnight Drive');
-    await expect(row(page, 'v2')).not.toContainText('wider chorus');
-
-    await page.getByRole('button', { name: 'More for v2' }).click();
-    await page.getByRole('menuitem', { name: 'Delete' }).click();
-    const remove = page.getByRole('alertdialog');
-    await remove.getByRole('button', { name: 'Delete' }).click();
-    await expect(remove).toBeHidden();
-    await expect(page.getByText("You can't delete v2.")).toBeVisible();
-    await expect(rows(page).getByRole('listitem')).toHaveCount(3);
-    await captureScreenshot(page, 'project-version-forbidden', {
-      fullPage: false,
-    });
-  });
-});
-
-test('deleting the last version focuses the project title', async ({
-  page,
-  context,
-}) => {
-  const [only] = SAMPLE;
-  if (!only) throw new Error('no sample');
-  const { project } = await seedProject(context, [only]);
-  await openProject(page, project.id);
-  await page.getByRole('button', { name: 'More for v1' }).click();
-  await page.getByRole('menuitem', { name: 'Delete' }).click();
-  await page
-    .getByRole('alertdialog')
-    .getByRole('button', { name: 'Delete' })
-    .click();
-  await expect(page.getByText('No versions yet')).toBeVisible();
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Midnight Drive' }),
-  ).toBeFocused();
-});
-
-test('a version already deleted elsewhere drops out and focuses Versions', async ({
-  page,
-  context,
-}) => {
-  const { project, tracks } = await seedProject(context);
-  await openProject(page, project.id);
-  await page.getByRole('button', { name: 'More for v2' }).click();
-  await page.getByRole('menuitem', { name: 'Delete' }).click();
-  const dialog = page.getByRole('alertdialog');
-  await app.db.delete(trackTable).where(eq(trackTable.id, tracks[1]?.id ?? ''));
-  const refused = page.waitForResponse(
-    (res) => res.request().method() === 'DELETE' && res.status() === 404,
-  );
-  await dialog.getByRole('button', { name: 'Delete' }).click();
-  await refused;
-  await expect(dialog).toBeHidden();
-  await expect(row(page, 'v2')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Versions' })).toBeFocused();
-});
-
 test('delete the project', async ({ page, context }) => {
   const { project } = await seedProject(context);
   await openProject(page, project.id);
@@ -732,9 +624,8 @@ test('owner with collaborators', async ({ page, context }) => {
   await expect(row(page, 'v5')).toContainText('Uploaded by Lee Hart');
   await expect(row(page, 'v4')).toContainText('Uploaded by Sam Rivera');
   await expect(row(page, 'v3')).toContainText('Uploaded by you');
-  // The owner manages everyone's versions.
-  await expect(page.getByRole('button', { name: 'More for v4' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'More for v5' })).toBeVisible();
+  // Rename and delete are on the track page.
+  await expect(rows(page).getByRole('button')).toHaveCount(0);
   // v3's own 2 notes plus one from each collaborator.
   await expect(row(page, 'v3')).toContainText('4 notes · 0 done');
   const share = page.getByRole('button', { name: 'Share', exact: true });
@@ -791,9 +682,7 @@ test('collaborator', async ({ page, context }) => {
   await expect(items.nth(1)).toContainText('Uploaded by Maya Chen');
   await expect(items.nth(1)).toContainText('2 notes · 0 done');
   await expect(items.nth(3)).toContainText('11 notes · 11 done');
-  // A menu on Sam's own version only.
-  await expect(rows(page).getByRole('button')).toHaveCount(1);
-  await expect(page.getByRole('button', { name: 'More for v4' })).toBeVisible();
+  await expect(rows(page).getByRole('button')).toHaveCount(0);
   await expect(
     page.getByRole('button', { name: 'Upload a new version' }),
   ).toBeEnabled();
@@ -997,49 +886,6 @@ test('collaborator uploads a version', async ({ page, context }) => {
     projectId: project.id,
     fileName: MIX.name,
   });
-});
-
-test('collaborator renames and deletes their own version', async ({
-  page,
-  context,
-}) => {
-  const { project, owner, me, tracks } = await seedShared(context, SAMPLE, [
-    SAM_MIX,
-  ]);
-  const jo = await newUser('Jo Park');
-  await createMember(app.db, { projectId: project.id, userId: jo.id });
-  const v4 = tracks[3]?.id ?? '';
-  for (const [i, userId] of [
-    owner.id,
-    owner.id,
-    jo.id,
-    jo.id,
-    me.id,
-    me.id,
-  ].entries()) {
-    await createNote(app.db, { userId, trackId: v4, timestampMs: i * 1000 });
-  }
-  await openProject(page, project.id);
-
-  await page.getByRole('button', { name: 'More for v4' }).click();
-  await page.getByRole('menuitem', { name: 'Rename' }).click();
-  const rename = page.getByRole('dialog', { name: 'Rename v4' });
-  await rename.getByLabel('Name').fill('Midnight Drive — Sam mix 2');
-  await rename.getByRole('button', { name: 'Save' }).click();
-  await expect(rename).toBeHidden();
-  await expect(row(page, 'v4')).toContainText('Midnight Drive — Sam mix 2');
-
-  await page.getByRole('button', { name: 'More for v4' }).click();
-  await page.getByRole('menuitem', { name: 'Delete' }).click();
-  const dialog = page.getByRole('alertdialog', {
-    name: 'Delete v4 and its 6 notes?',
-  });
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: 'Delete' }).click();
-  await expect(dialog).toBeHidden();
-  await expect(rows(page).getByRole('listitem')).toHaveCount(3);
-  await expect(row(page, 'v4')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Versions' })).toBeFocused();
 });
 
 test('a removed collaborator gets not found', async ({ page, context }) => {
