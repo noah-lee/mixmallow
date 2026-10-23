@@ -208,8 +208,7 @@ function TrackView({
     : undefined
 
   const noteGone = (noteId: string) => {
-    cache.remove(noteId)
-    void cache.refetch()
+    void cache.remove(noteId).then(cache.refetch)
     toast("That note was already deleted.")
   }
 
@@ -282,7 +281,7 @@ function TrackView({
   }
 
   const setDone = async (note: Note, done: boolean) => {
-    cache.put({ ...note, done })
+    await cache.put({ ...note, done })
     try {
       await updateNote.mutateAsync({ noteId: note.id, done })
     } catch (err) {
@@ -290,7 +289,7 @@ function TrackView({
         noteGone(note.id)
         return
       }
-      cache.put(note)
+      await cache.put(note)
       if (httpStatus(err) === 403) forbidden()
       else toast.error("Couldn't update the note. Try again.")
     }
@@ -314,12 +313,12 @@ function TrackView({
 
   const remove = async (note: Note) => {
     if (editing?.id === note.id) setEditing(null)
-    cache.remove(note.id)
+    await cache.remove(note.id)
     try {
       await deleteNote.mutateAsync(note.id)
     } catch (err) {
       if (httpStatus(err) !== 404) {
-        cache.put(note)
+        await cache.put(note)
         if (httpStatus(err) === 403) forbidden()
         else toast.error("Couldn't delete the note. Try again.")
         return

@@ -112,15 +112,21 @@ export function useDeleteNote() {
   })
 }
 
-// Optimistic edits to the cached list, for done toggles and deletes.
+// Optimistic edits to the cached list, for done toggles and deletes. Each cancels in-flight
+// fetches first, or one landing late overwrites the edit (a cancel reverts asynchronously).
 export function useNoteCache(trackId: string) {
   const qc = useQueryClient()
   const setNotes = useSetNotes(trackId)
+  const cancel = () => qc.cancelQueries({ queryKey: notesKey(trackId) })
   return {
-    put: (note: Note) =>
-      setNotes((notes) => [...notes.filter((n) => n.id !== note.id), note]),
-    remove: (noteId: string) =>
-      setNotes((notes) => notes.filter((n) => n.id !== noteId)),
+    put: async (note: Note) => {
+      await cancel()
+      setNotes((notes) => [...notes.filter((n) => n.id !== note.id), note])
+    },
+    remove: async (noteId: string) => {
+      await cancel()
+      setNotes((notes) => notes.filter((n) => n.id !== noteId))
+    },
     refetch: () => qc.invalidateQueries({ queryKey: notesKey(trackId) }),
   }
 }
