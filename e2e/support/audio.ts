@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 // A short mono 16-bit PCM sine, small enough to decode instantly.
 export function wav(seconds = 2, sampleRate = 8000): Buffer {
   const samples = seconds * sampleRate;
@@ -19,4 +21,9 @@ export function wav(seconds = 2, sampleRate = 8000): Buffer {
     buf.writeInt16LE(Math.round(v * 32767), 44 + i * 2);
   }
   return buf;
+}
+
+// A 2 s 440 Hz mono tone, encoded once with ffmpeg (Chromium can't be relied on for AAC/M4A).
+export function mp3(): Buffer {
+  return readFileSync(new URL('./tone.mp3', import.meta.url));
 }

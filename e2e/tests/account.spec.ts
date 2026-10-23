@@ -48,7 +48,7 @@ const usage = (page: Page) => page.getByRole('region', { name: 'Usage' });
 
 async function openAccount(page: Page) {
   await page.goto('/account');
-  await expect(usage(page)).toContainText('of 100 MB');
+  await expect(usage(page)).toContainText('of 500 MB');
 }
 
 test('loading', async ({ page, context }) => {
@@ -68,7 +68,9 @@ test('default', async ({ page, context }) => {
   await expect(page.getByText('Maya Okafor')).toBeVisible();
   await expect(page.getByText(email)).toBeVisible();
   await expect(page.getByText('Signed in with Google')).toBeVisible();
-  await expect(usage(page)).toHaveText('Usage1 of 1 project · 62 MB of 100 MB');
+  await expect(usage(page)).toHaveText(
+    'Usage1 of 3 projects · 62 MB of 500 MB',
+  );
   await expect(page.getByRole('radio', { name: 'System' })).toHaveAttribute(
     'aria-checked',
     'true',
@@ -79,7 +81,7 @@ test('default', async ({ page, context }) => {
 test('no projects yet', async ({ page, context }) => {
   await signIn(context, false);
   await openAccount(page);
-  await expect(usage(page)).toHaveText('Usage0 of 1 project · 0 MB of 100 MB');
+  await expect(usage(page)).toHaveText('Usage0 of 3 projects · 0 MB of 500 MB');
   await captureScreenshot(page, 'account-empty');
 });
 
@@ -108,7 +110,9 @@ test.describe('error', () => {
 
     fail = false;
     await page.getByRole('button', { name: 'Try again' }).click();
-    await expect(usage(page)).toContainText('1 of 1 project · 62 MB of 100 MB');
+    await expect(usage(page)).toContainText(
+      '1 of 3 projects · 62 MB of 500 MB',
+    );
   });
 
   test('sign out still signs out when the request fails', async ({

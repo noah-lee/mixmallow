@@ -6,12 +6,13 @@ import {
   createProject,
   createUser,
 } from '../../apps/api/test/helpers/factories.ts';
-import { wav } from '../support/audio.ts';
+import { mp3, wav } from '../support/audio.ts';
 import { E2E_USER, STORAGE_ORIGIN, WEB_ORIGIN } from '../support/env.ts';
 import { captureScreenshot, expect, test } from '../support/fixtures.ts';
 import { signedInUser } from '../support/session.ts';
 
 let app: Awaited<ReturnType<typeof createTestApp>>;
+let userId: string;
 
 test.beforeAll(async () => {
   app = await createTestApp();
@@ -25,11 +26,12 @@ test.afterAll(async () => {
 // replace each other's uploads when they run in parallel.
 test.beforeEach(async ({ context }) => {
   const id = crypto.randomUUID();
-  const { cookies } = await signedInUser(app, {
+  const { user, cookies } = await signedInUser(app, {
     email: `e2e-${id}@example.com`,
     name: E2E_USER.name,
     authProviderId: `e2e-${id}`,
   });
+  userId = user.id;
   await context.addCookies(cookies);
 });
 
@@ -42,10 +44,17 @@ const TRACK_ID = '9b7e2c4d-1f3a-4e5b-8c6d-2a1b0c9d8e02';
 const OWNER_ID = '5d2a8f1c-3b4e-4a6d-9e7f-1c2b3a4d5e03';
 
 const MIX = {
-  name: 'Midnight Drive.wav',
-  mimeType: 'audio/wav',
-  buffer: wav(),
+  name: 'Late Bloom.mp3',
+  mimeType: 'audio/mpeg',
+  buffer: mp3(),
 };
+
+const ownProjects = (count: number) =>
+  Promise.all(
+    Array.from({ length: count }, (_, i) =>
+      createProject(app.db, { userId, name: `Song ${i + 1}` }),
+    ),
+  );
 
 const fileInput = (page: Page) => page.locator('input[type="file"]');
 const dropzone = (page: Page) => page.getByRole('region', { name: 'Upload' });
@@ -68,8 +77,8 @@ function completeResponse() {
       id: TRACK_ID,
       projectId: PROJECT_ID,
       version: 1,
-      name: 'Midnight Drive',
-      format: 'wav',
+      name: 'Late Bloom',
+      format: 'mp3',
       sizeBytes: MIX.buffer.length,
       durationMs: 2000,
       createdAt: now,
@@ -178,11 +187,15 @@ test('empty', async ({ page }) => {
     page.getByRole('button', { name: 'Choose a file' }),
   ).toBeVisible();
   await expect(
-    page.getByText('WAV, MP3, FLAC or AAC · up to 100 MB per file'),
+    page.getByText('MP3, AAC or M4A · up to 20 MB per file'),
   ).toBeVisible();
   await expect(
-    page.getByText('Free: 1 project, 100 MB of mixes'),
+    page.getByText('Free: 3 projects, 500 MB of mixes'),
   ).toBeVisible();
+  await expect(fileInput(page)).toHaveAttribute('accept', '.mp3,.aac,.m4a');
+  await expect(
+    page.getByRole('link', { name: 'Back to projects' }),
+  ).toHaveCount(0);
   await captureScreenshot(page, 'first-upload-empty');
 });
 
@@ -203,7 +216,7 @@ test('rejected format', async ({ page }) => {
     buffer: Buffer.from('not audio'),
   });
   await expect(page.getByRole('alert')).toHaveText(
-    'Use a WAV, MP3, FLAC or AAC file',
+    'Use an MP3, AAC or M4A file',
   );
   await expect(
     page.getByRole('button', { name: 'Choose a file' }),
@@ -211,11 +224,34 @@ test('rejected format', async ({ page }) => {
   await captureScreenshot(page, 'first-upload-rejected-format');
 });
 
+test('rejected WAV', async ({ page }) => {
+  let registered = false;
+  page.on('request', (req) => {
+    if (req.url().endsWith('/api/uploads')) registered = true;
+  });
+  await openStart(page);
+  for (const name of ['Late Bloom.flac', 'Late Bloom.wav']) {
+    await fileInput(page).setInputFiles({
+      name,
+      mimeType: 'audio/wav',
+      buffer: wav(),
+    });
+    await expect(page.getByRole('alert')).toHaveText(
+      'Upload an MP3, AAC or M4A file. Export your mix as a 320 kbps MP3 to upload it.',
+    );
+  }
+  expect(registered).toBe(false);
+  await expect(
+    page.getByRole('button', { name: 'Choose a file' }),
+  ).toBeEnabled();
+  await captureScreenshot(page, 'first-upload-rejected-wav');
+});
+
 test('rejected size', async ({ page }, testInfo) => {
   // Sparse, so it costs no disk; the size check runs before anything reads it.
-  const big = testInfo.outputPath('Huge mix.wav');
+  const big = testInfo.outputPath('Huge mix.mp3');
   const fd = openSync(big, 'w');
-  ftruncateSync(fd, 101 * 1_048_576);
+  ftruncateSync(fd, 25 * 1_048_576);
   closeSync(fd);
 
   let registered = false;
@@ -224,7 +260,7 @@ test('rejected size', async ({ page }, testInfo) => {
   });
   await openStart(page);
   await fileInput(page).setInputFiles(big);
-  await expect(page.getByRole('alert')).toHaveText('Files can be up to 100 MB');
+  await expect(page.getByRole('alert')).toHaveText('Files can be up to 20 MB');
   expect(registered).toBe(false);
   await captureScreenshot(page, 'first-upload-rejected-size');
 });
@@ -232,8 +268,8 @@ test('rejected size', async ({ page }, testInfo) => {
 test('rejected unreadable', async ({ page }) => {
   await openStart(page);
   await fileInput(page).setInputFiles({
-    name: 'Broken.wav',
-    mimeType: 'audio/wav',
+    name: 'Broken.mp3',
+    mimeType: 'audio/mpeg',
     buffer: Buffer.from('definitely not a wave file'),
   });
   await expect(page.getByRole('alert')).toHaveText(
@@ -425,7 +461,7 @@ test('dropping a file uploads it and opens the new track', async ({ page }) => {
   const dataTransfer = await page.evaluateHandle(`(() => {
     const bytes = Uint8Array.from(atob('${MIX.buffer.toString('base64')}'), (c) => c.charCodeAt(0));
     const dt = new DataTransfer();
-    dt.items.add(new File([bytes], '${MIX.name}', { type: 'audio/wav' }));
+    dt.items.add(new File([bytes], '${MIX.name}', { type: '${MIX.mimeType}' }));
     return dt;
   })()`);
   await dropzone(page).dispatchEvent('drop', { dataTransfer });
@@ -433,22 +469,80 @@ test('dropping a file uploads it and opens the new track', async ({ page }) => {
   await expect(page).toHaveURL(
     `${WEB_ORIGIN}/app/projects/${PROJECT_ID}/tracks/${TRACK_ID}`,
   );
-  expect(completeBody).toMatchObject({ durationMs: 2000 });
-  const { peaks } = completeBody as { peaks: number[] };
-  expect(peaks).toHaveLength(40);
+  const { durationMs, peaks } = completeBody as {
+    durationMs: number;
+    peaks: number[];
+  };
+  // MP3 decoding adds encoder padding to the 2 s tone.
+  expect(durationMs).toBeGreaterThanOrEqual(2000);
+  expect(durationMs).toBeLessThan(2100);
+  expect(peaks.length).toBeGreaterThanOrEqual(40);
   expect(Math.max(...peaks)).toBeGreaterThan(100);
 });
 
-test('a user who has a project is sent to its newest version', async ({
+test('entry route sends a user who has a project to its newest version', async ({
   page,
 }) => {
   await page.route('**/api/projects', (route) =>
     route.fulfill({ json: projectList() }),
   );
-  await page.goto('/app/start');
+  await page.goto('/app');
   await expect(page).toHaveURL(
     `${WEB_ORIGIN}/app/projects/${PROJECT_ID}/tracks/${TRACK_ID}`,
   );
+});
+
+test('new project', async ({ page }) => {
+  await ownProjects(1);
+  await page.goto('/app/start');
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Start a new project' }),
+  ).toBeVisible();
+  await expect(
+    page.getByText('MP3, AAC or M4A · up to 20 MB per file'),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Choose a file' }),
+  ).toBeVisible();
+  await captureScreenshot(page, 'first-upload-new-project');
+
+  await page.getByRole('link', { name: 'Back to projects' }).click();
+  await expect(page).toHaveURL(`${WEB_ORIGIN}/app/projects`);
+});
+
+test('a user owning 2 projects uploads a third and opens it', async ({
+  page,
+}) => {
+  await ownProjects(2);
+  await page.route(STORAGE, storageOk);
+  await page.route('**/api/uploads/*/complete', (route) =>
+    route.fulfill({ status: 201, json: completeResponse() }),
+  );
+  await page.goto('/app/start');
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Start a new project' }),
+  ).toBeVisible();
+  const registered = page.waitForResponse(
+    (res) =>
+      res.request().method() === 'POST' && res.url().endsWith('/api/uploads'),
+  );
+  await fileInput(page).setInputFiles(MIX);
+  expect((await registered).status()).toBe(201);
+  await expect(page).toHaveURL(
+    `${WEB_ORIGIN}/app/projects/${PROJECT_ID}/tracks/${TRACK_ID}`,
+  );
+});
+
+test('at the project limit, start goes to the projects list', async ({
+  page,
+}) => {
+  await ownProjects(3);
+  await page.goto('/app/start');
+  await expect(page).toHaveURL(`${WEB_ORIGIN}/app/projects`);
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Projects' }),
+  ).toBeVisible();
+  await expect(page.getByRole('link', { name: /Song 3/ })).toBeVisible();
 });
 
 test.describe('projects fail to load', () => {
@@ -476,9 +570,7 @@ test.describe('the project limit is reached mid-flow', () => {
     expectedConsoleError: /Failed to load resource: .*status of 403/,
   });
 
-  test('a refused registration goes back to the entry route', async ({
-    page,
-  }) => {
+  test('a refused registration goes to the projects list', async ({ page }) => {
     let refused = false;
     await page.route('**/api/uploads', (route) => {
       refused = true;
@@ -492,8 +584,35 @@ test.describe('the project limit is reached mid-flow', () => {
     );
     await openStart(page);
     await fileInput(page).setInputFiles(MIX);
-    await expect(page).toHaveURL(
-      `${WEB_ORIGIN}/app/projects/${PROJECT_ID}/tracks/${TRACK_ID}`,
+    await expect(page).toHaveURL(`${WEB_ORIGIN}/app/projects`);
+    await expect(
+      page.getByRole('link', { name: /Midnight Drive/ }),
+    ).toBeVisible();
+  });
+});
+
+test.describe('the server refuses the file', () => {
+  test.use({
+    expectedConsoleError: /Failed to load resource: .*status of 403/,
+  });
+
+  test('a refused format or size shows the file message', async ({ page }) => {
+    let error = 'format_not_allowed';
+    await page.route('**/api/uploads', (route) =>
+      route.fulfill({ status: 403, json: { error } }),
     );
+    await openStart(page);
+    await fileInput(page).setInputFiles(MIX);
+    await expect(page.getByRole('alert')).toHaveText(
+      'Upload an MP3, AAC or M4A file. Export your mix as a 320 kbps MP3 to upload it.',
+    );
+    error = 'file_too_large';
+    await fileInput(page).setInputFiles(MIX);
+    await expect(page.getByRole('alert')).toHaveText(
+      'Files can be up to 20 MB',
+    );
+    await expect(
+      page.getByRole('button', { name: 'Choose a file' }),
+    ).toBeEnabled();
   });
 });

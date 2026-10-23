@@ -1,4 +1,4 @@
-import { AUDIO_FORMATS } from "@repo/shared/schemas"
+import { type AudioFormat, formatList } from "@repo/shared/schemas"
 import { CircleAlert, Upload } from "lucide-react"
 import {
   type DragEvent,
@@ -17,10 +17,6 @@ import { cn } from "@/lib/utils"
 import { UploadIllustration } from "./upload-illustration"
 import { type PreparedFile, uploadMessages, type useUpload } from "./use-upload"
 
-const ACCEPT = Object.keys(AUDIO_FORMATS)
-  .map((ext) => `.${ext}`)
-  .join(",")
-
 type UploadController = ReturnType<typeof useUpload>
 
 // `row` is the project page's version of the in-progress states: a card at the top of the
@@ -28,10 +24,12 @@ type UploadController = ReturnType<typeof useUpload>
 export function UploadPanel({
   upload,
   maxFileBytes,
+  acceptedFormats,
   variant = "panel",
 }: {
   upload: UploadController
   maxFileBytes: number
+  acceptedFormats: readonly AudioFormat[]
   variant?: "panel" | "row"
 }) {
   const { state } = upload
@@ -42,6 +40,7 @@ export function UploadPanel({
         <Dropzone
           error={state.error}
           maxFileBytes={maxFileBytes}
+          acceptedFormats={acceptedFormats}
           onFile={(file) => void upload.choose(file)}
         />
       )
@@ -178,6 +177,7 @@ function FileCard({
 export function Dropzone({
   error,
   maxFileBytes,
+  acceptedFormats,
   onFile,
   compact = false,
   title = "Add your mix",
@@ -188,6 +188,7 @@ export function Dropzone({
 }: {
   error: string | null
   maxFileBytes: number
+  acceptedFormats: readonly AudioFormat[]
   onFile: (file: File) => void
   compact?: boolean
   title?: string
@@ -242,7 +243,8 @@ export function Dropzone({
     <div id={limitsId} className="text-caption text-muted-foreground">
       {notice ?? (
         <p>
-          WAV, MP3, FLAC or AAC · up to {formatBytes(maxFileBytes)} per file
+          {formatList(acceptedFormats)} · up to {formatBytes(maxFileBytes)} per
+          file
         </p>
       )}
     </div>
@@ -303,7 +305,7 @@ export function Dropzone({
         <input
           ref={inputRef}
           type="file"
-          accept={ACCEPT}
+          accept={acceptedFormats.map((format) => `.${format}`).join(",")}
           className="hidden"
           onChange={(event) => {
             const file = event.target.files?.[0]

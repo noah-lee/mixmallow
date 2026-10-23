@@ -81,9 +81,12 @@ function Project({ projectId }: { projectId: string }) {
     ? spaceLeftBytes !== undefined && spaceLeftBytes < MB
     : project.data?.acceptsUploads === false
   const onProjectNotFound = useCallback(() => setGone(true), [])
+  const acceptedFormats =
+    project.data?.ownerLimits.acceptedFormats ?? PLANS.free.acceptedFormats
   const upload = useUpload({
     projectId,
     maxFileBytes,
+    acceptedFormats,
     ...(spaceLeftBytes !== undefined ? { spaceLeftBytes } : {}),
     onProjectNotFound,
     collaborator: project.data?.role === "collaborator",
@@ -149,6 +152,7 @@ function Project({ projectId }: { projectId: string }) {
       buttonLabel={empty ? "Upload a version" : "Upload a new version"}
       error={uploadError}
       maxFileBytes={maxFileBytes}
+      acceptedFormats={acceptedFormats}
       disabled={storageFull || !idle}
       notice={storageNotice}
       onFile={(file) => void upload.choose(file)}
@@ -232,6 +236,7 @@ function Project({ projectId }: { projectId: string }) {
                   <UploadPanel
                     upload={upload}
                     maxFileBytes={maxFileBytes}
+                    acceptedFormats={acceptedFormats}
                     variant="row"
                   />
                 </li>

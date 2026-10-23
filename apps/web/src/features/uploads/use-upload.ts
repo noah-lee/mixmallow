@@ -1,16 +1,19 @@
 import {
+  type AudioFormat,
   type CompleteUploadBody,
   type CreateUploadBody,
   type CreateUploadResponse,
   completeUploadResponseSchema,
   createUploadResponseSchema,
+  fileExtension,
+  formatList,
   isAudioFileName,
   MAX_DURATION_MS,
 } from "@repo/shared/schemas"
 import { useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
 import { useCallback, useEffect, useRef, useState } from "react"
-import { PROJECTS_QUERY_KEY } from "@/features/projects/api"
+import { PROJECTS_QUERY_KEY, projectKey } from "@/features/projects/api"
 import { USAGE_QUERY_KEY } from "@/features/usage/api"
 import { api, apiErrorCode, httpStatus } from "@/lib/api"
 import { formatBytes } from "@/lib/format"
@@ -33,7 +36,11 @@ export type UploadState =
   | { status: "refused"; prepared: PreparedFile }
 
 export const uploadMessages = {
-  format: "Use a WAV, MP3, FLAC or AAC file",
+  format: (formats: readonly AudioFormat[]) =>
+    `Use an ${formatList(formats)} file`,
+  // An audio format the plan doesn't take, e.g. a WAV bounce on the free plan.
+  otherFormat: (formats: readonly AudioFormat[]) =>
+    `Upload an ${formatList(formats)} file. Export your mix as a 320 kbps MP3 to upload it.`,
   size: (maxFileBytes: number) =>
     `Files can be up to ${formatBytes(maxFileBytes)}`,
   unreadable: "This file couldn't be read as audio",
@@ -50,7 +57,9 @@ export const uploadMessages = {
 type Options = {
   // Omitted for a first upload, which creates the project.
   projectId?: string
+  // The owner's plan rules; the server checks them again when the upload is registered.
   maxFileBytes: number
+  acceptedFormats: readonly AudioFormat[]
   // Checked before any request when known (project page); the server enforces it either way.
   spaceLeftBytes?: number
   onProjectNotFound?: () => void
@@ -59,6 +68,16 @@ type Options = {
 }
 
 type Run = { controller: AbortController }
+
+function formatError(
+  fileName: string,
+  formats: readonly AudioFormat[],
+): string | null {
+  if (!isAudioFileName(fileName)) return uploadMessages.format(formats)
+  return formats.includes(fileExtension(fileName) as AudioFormat)
+    ? null
+    : uploadMessages.otherFormat(formats)
+}
 
 const errorOf = (err: unknown) => ({
   status: httpStatus(err),
@@ -100,6 +119,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 export function useUpload({
   projectId,
   maxFileBytes,
+  acceptedFormats,
   spaceLeftBytes,
   onProjectNotFound,
   collaborator = false,
@@ -206,8 +226,12 @@ export function useUpload({
         if (code === "project_limit_reached") {
           pendingUploadId.current = null
           // The cached list may still be empty, which would route straight back here.
-          await qc.invalidateQueries({ queryKey: PROJECTS_QUERY_KEY })
-          await navigate({ to: "/app" })
+          // Nothing on this page observes it, so the refetch has to be forced.
+          await qc.invalidateQueries({
+            queryKey: PROJECTS_QUERY_KEY,
+            refetchType: "all",
+          })
+          await navigate({ to: "/app/projects" })
           return
         }
         if (code === "storage_limit_reached") {
@@ -228,7 +252,23 @@ export function useUpload({
             status: "idle",
             error: isAudioFileName(prepared.file.name)
               ? uploadMessages.size(maxFileBytes)
-              : uploadMessages.format,
+              : uploadMessages.format(acceptedFormats),
+          })
+          return
+        }
+        // The cached plan passed the client check, so it is stale; the message is about the file.
+        if (code === "format_not_allowed" || code === "file_too_large") {
+          void qc.invalidateQueries({ queryKey: USAGE_QUERY_KEY })
+          if (projectId) {
+            void qc.invalidateQueries({ queryKey: projectKey(projectId) })
+          }
+          setState({
+            status: "idle",
+            error:
+              code === "file_too_large"
+                ? uploadMessages.size(maxFileBytes)
+                : (formatError(prepared.file.name, acceptedFormats) ??
+                  uploadMessages.otherFormat(acceptedFormats)),
           })
           return
         }
@@ -239,17 +279,28 @@ export function useUpload({
         setState({ status: "failed", prepared })
       }
     },
-    [projectId, maxFileBytes, onProjectNotFound, collaborator, qc, navigate],
+    [
+      projectId,
+      maxFileBytes,
+      acceptedFormats,
+      onProjectNotFound,
+      collaborator,
+      qc,
+      navigate,
+    ],
   )
 
   const choose = useCallback(
     async (file: File) => {
       if (state.status !== "idle") return
-      let error: string | null = null
-      if (!isAudioFileName(file.name)) error = uploadMessages.format
-      else if (file.size > maxFileBytes)
+      let error = formatError(file.name, acceptedFormats)
+      if (!error && file.size > maxFileBytes)
         error = uploadMessages.size(maxFileBytes)
-      else if (spaceLeftBytes !== undefined && file.size > spaceLeftBytes)
+      else if (
+        !error &&
+        spaceLeftBytes !== undefined &&
+        file.size > spaceLeftBytes
+      )
         error = uploadMessages.noSpace(spaceLeftBytes)
       if (error) {
         setState({ status: "idle", error })
@@ -272,7 +323,7 @@ export function useUpload({
       }
       await upload({ file, ...decoded })
     },
-    [state.status, maxFileBytes, spaceLeftBytes, upload],
+    [state.status, maxFileBytes, acceptedFormats, spaceLeftBytes, upload],
   )
 
   const cancel = useCallback(() => {
