@@ -32,7 +32,8 @@ async function lockUsers(tx: Transaction, userIds: string[]): Promise<void> {
     .from(users)
     .where(inArray(users.id, [...new Set(userIds)]))
     .orderBy(asc(users.id))
-    .for('update');
+    // Not `update`: that would also block the key-share locks note and member inserts take.
+    .for('no key update');
 }
 
 async function projectOwner(
@@ -93,9 +94,17 @@ export const uploadRoutes: FastifyPluginAsyncZod = async (app) => {
           ownerId = owner;
         }
         await lockUsers(tx, [userId, ownerId]);
-        // Re-resolved under the lock: a removal or deletion meanwhile wins.
-        if (projectId && !(await projectRole(tx, userId, projectId))) {
-          return { error: 'not_found', status: 404 } as const;
+        // Re-resolved under the lock: a removal or deletion meanwhile wins. The key-share
+        // lock keeps the project from being deleted before the upload row references it.
+        if (projectId) {
+          const [project] = await tx
+            .select({ id: projects.id })
+            .from(projects)
+            .where(eq(projects.id, projectId))
+            .for('key share');
+          if (!project || !(await projectRole(tx, userId, projectId))) {
+            return { error: 'not_found', status: 404 } as const;
+          }
         }
         const limit = await limitError(tx, ownerId, { projectId, sizeBytes });
         if (limit) return { error: limit, status: 403 } as const;
