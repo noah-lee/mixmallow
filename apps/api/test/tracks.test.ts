@@ -5,13 +5,14 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp } from './helpers/app.ts';
 import {
+  createMember,
   createNote,
   createProject,
   createTrack,
   createTranscodeJob,
 } from './helpers/factories.ts';
 import { keyFromUrl } from './helpers/memory-storage.ts';
-import { createTestSession } from './helpers/session.ts';
+import { createTestSession, type TestSession } from './helpers/session.ts';
 import { shareProject } from './helpers/sharing.ts';
 import { uploadTrack, writeStoredObject } from './helpers/uploads.ts';
 
@@ -386,5 +387,171 @@ describe('tracks of a shared project', () => {
     expect(res.json()).toEqual({ error: 'forbidden' });
     expect(await trackRow(track.id)).toBeDefined();
     expect(await app.storage.headSize(track.storageKey)).toBe(10);
+  });
+});
+
+describe('versions uploaded by a collaborator', () => {
+  // Maya owns the project, Sam uploaded v4 (5 MB), Jo is another collaborator.
+  async function collaboratorVersion() {
+    const shared = await shareProject(app);
+    const jo = await createTestSession(app, { name: 'Jo' });
+    await createMember(app.db, {
+      projectId: shared.project.id,
+      userId: jo.user.id,
+    });
+    const track = await createTrack(app.db, {
+      userId: shared.collaborator.user.id,
+      projectId: shared.project.id,
+      sizeBytes: 5 * MB,
+    });
+    writeStoredObject(app, track.storageKey, 10);
+    return { ...shared, jo, track };
+  }
+
+  const rename = (trackId: string, session: TestSession, name = 'Renamed') =>
+    app.inject({
+      method: 'PATCH',
+      url: `/api/tracks/${trackId}`,
+      cookies: session.cookies,
+      payload: { name },
+    });
+  const remove = (trackId: string, session: TestSession) =>
+    app.inject({
+      method: 'DELETE',
+      url: `/api/tracks/${trackId}`,
+      cookies: session.cookies,
+    });
+  const usedBy = async (session: TestSession) =>
+    (
+      await app.inject({
+        method: 'GET',
+        url: '/api/usage',
+        cookies: session.cookies,
+      })
+    ).json().storageUsedBytes;
+
+  it('lets the uploader rename and delete their own version', async () => {
+    const { collaborator, track } = await collaboratorVersion();
+    const renamed = await rename(track.id, collaborator, '  Sam mix  ');
+    expect(renamed.statusCode).toBe(200);
+    expect(renamed.json()).toMatchObject({ id: track.id, name: 'Sam mix' });
+
+    const res = await remove(track.id, collaborator);
+    expect(res.statusCode).toBe(204);
+    expect(await trackRow(track.id)).toBeUndefined();
+    expect(await app.storage.headSize(track.storageKey)).toBeNull();
+  });
+
+  it("forbids another collaborator to rename or delete the uploader's version", async () => {
+    const { jo, track } = await collaboratorVersion();
+    for (const res of [
+      await rename(track.id, jo),
+      await remove(track.id, jo),
+    ]) {
+      expect(res.statusCode).toBe(403);
+      expect(res.json()).toEqual({ error: 'forbidden' });
+    }
+    expect((await trackRow(track.id))?.name).toBe(track.name);
+    expect(await app.storage.headSize(track.storageKey)).toBe(10);
+  });
+
+  it("deletes the uploader's version with everyone's notes and frees the owner's storage", async () => {
+    const { owner, collaborator, jo, track } = await collaboratorVersion();
+    for (const author of [owner, owner, jo, jo, collaborator, collaborator]) {
+      await createNote(app.db, { userId: author.user.id, trackId: track.id });
+    }
+    const before = await usedBy(owner);
+
+    const res = await remove(track.id, collaborator);
+    expect(res.statusCode).toBe(204);
+    expect(
+      await app.db.select().from(notes).where(eq(notes.trackId, track.id)),
+    ).toEqual([]);
+    expect(await app.storage.headSize(track.storageKey)).toBeNull();
+    expect(await usedBy(owner)).toBe(before - 5 * MB);
+  });
+
+  it("lets the owner rename and then delete a collaborator's version", async () => {
+    const { owner, track } = await collaboratorVersion();
+    const renamed = await rename(track.id, owner, 'Owner pick');
+    expect(renamed.statusCode).toBe(200);
+    expect(renamed.json()).toMatchObject({ name: 'Owner pick' });
+    expect((await remove(track.id, owner)).statusCode).toBe(204);
+    expect(await trackRow(track.id)).toBeUndefined();
+  });
+
+  it("keeps a removed uploader's version for the owner and 404s it for the uploader", async () => {
+    const { owner, collaborator, project, track } = await collaboratorVersion();
+    const left = await app.inject({
+      method: 'DELETE',
+      url: `/api/projects/${project.id}/members/${collaborator.user.id}`,
+      cookies: owner.cookies,
+    });
+    expect(left.statusCode).toBe(204);
+
+    const list = await app.inject({
+      method: 'GET',
+      url: `/api/projects/${project.id}/tracks`,
+      cookies: owner.cookies,
+    });
+    expect(list.json().items[0]).toMatchObject({
+      id: track.id,
+      uploader: { id: collaborator.user.id, name: 'Sam' },
+    });
+    expect(await usedBy(owner)).toBe(8 * MB);
+
+    const get = await app.inject({
+      method: 'GET',
+      url: `/api/tracks/${track.id}`,
+      cookies: collaborator.cookies,
+    });
+    for (const res of [
+      get,
+      await rename(track.id, collaborator),
+      await remove(track.id, collaborator),
+    ]) {
+      expect(res.statusCode).toBe(404);
+      expect(res.json()).toEqual({ error: 'not_found' });
+    }
+    expect((await trackRow(track.id))?.name).toBe(track.name);
+
+    expect((await rename(track.id, owner, 'Kept')).statusCode).toBe(200);
+    expect((await remove(track.id, owner)).statusCode).toBe(204);
+  });
+
+  it("404s an outsider's rename or delete of any version", async () => {
+    const {
+      outsider,
+      track,
+      tracks: ownerVersions,
+    } = await collaboratorVersion();
+    for (const id of [track.id, ownerVersions[0]?.id ?? MISSING_ID]) {
+      for (const res of [
+        await rename(id, outsider),
+        await remove(id, outsider),
+      ]) {
+        expect(res.statusCode).toBe(404);
+        expect(res.json()).toEqual({ error: 'not_found' });
+      }
+    }
+    expect((await trackRow(track.id))?.name).toBe(track.name);
+    expect(await app.storage.headSize(track.storageKey)).toBe(10);
+  });
+
+  it('names the uploader, without an email, in the detail and the rename response', async () => {
+    const { owner, collaborator, track } = await collaboratorVersion();
+    const sam = {
+      id: collaborator.user.id,
+      name: 'Sam',
+      picture: 'https://example.com/sam.png',
+    };
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/api/tracks/${track.id}`,
+      cookies: owner.cookies,
+    });
+    expect(detail.json().uploader).toEqual(sam);
+    const renamed = await rename(track.id, collaborator);
+    expect(renamed.json().uploader).toEqual(sam);
   });
 });

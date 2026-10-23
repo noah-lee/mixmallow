@@ -6,9 +6,9 @@ import {
   type TrackSummary,
   trackIdParamsSchema,
 } from '@repo/shared/schemas';
-import { and, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
-import { trackAccess } from '../projects/access.ts';
+import { type TrackAccess, trackAccess } from '../projects/access.ts';
 import {
   findTrackDetail,
   toTrackSummary,
@@ -18,14 +18,15 @@ import {
 const notFound = { error: 'not_found' } as const;
 const forbidden = { error: 'forbidden' } as const;
 
+// The owner manages every version; a collaborator only the ones they uploaded.
+const canManage = (access: TrackAccess, userId: string) =>
+  access.role === 'owner' || access.uploaderId === userId;
+
 export const trackRoutes: FastifyPluginAsyncZod = async (app) => {
   const options = {
     onRequest: [app.authenticate],
     schema: { params: trackIdParamsSchema },
   };
-  // Writes are owner-only; tracks.user_id is always the project owner.
-  const owned = (userId: string, trackId: string) =>
-    and(eq(tracks.id, trackId), eq(tracks.userId, userId));
 
   app.get(
     '/:trackId',
@@ -54,48 +55,50 @@ export const trackRoutes: FastifyPluginAsyncZod = async (app) => {
       req,
       reply,
     ): Promise<TrackSummary | typeof notFound | typeof forbidden> => {
-      const access = await trackAccess(
-        app.db,
-        req.user.sub,
-        req.params.trackId,
-      );
-      if (access?.role === 'collaborator') {
-        reply.code(403);
-        return forbidden;
-      }
-      const where = owned(req.user.sub, req.params.trackId);
-      const updated = await app.db
-        .update(tracks)
-        .set({ name: req.body.name })
-        .where(where)
-        .returning({ id: tracks.id });
-      const [row] =
-        updated.length > 0
-          ? await app.db.select(trackSummaryFields).from(tracks).where(where)
-          : [];
-      if (!row) {
-        reply.code(404);
-        return notFound;
-      }
-      return toTrackSummary(row);
+      const userId = req.user.sub;
+      const { trackId } = req.params;
+      const result = await app.db.transaction(async (tx) => {
+        const access = await trackAccess(tx, userId, trackId, { lock: true });
+        if (!access) return { status: 404, body: notFound } as const;
+        if (!canManage(access, userId)) {
+          return { status: 403, body: forbidden } as const;
+        }
+        const where = eq(tracks.id, trackId);
+        await tx.update(tracks).set({ name: req.body.name }).where(where);
+        const [row] = await tx
+          .select(trackSummaryFields)
+          .from(tracks)
+          .where(where);
+        if (!row) throw new Error('track vanished under lock');
+        return { status: 200, body: toTrackSummary(row) } as const;
+      });
+      reply.code(result.status);
+      return result.body;
     },
   );
 
   // Notes and the transcode job cascade; the stored files go after the commit.
   app.delete('/:trackId', options, async (req, reply) => {
-    const access = await trackAccess(app.db, req.user.sub, req.params.trackId);
-    if (access?.role === 'collaborator') {
-      reply.code(403);
-      return forbidden;
+    const userId = req.user.sub;
+    const { trackId } = req.params;
+    const result = await app.db.transaction(async (tx) => {
+      const access = await trackAccess(tx, userId, trackId, { lock: true });
+      if (!access) return { status: 404, body: notFound } as const;
+      if (!canManage(access, userId)) {
+        return { status: 403, body: forbidden } as const;
+      }
+      const [removed] = await tx
+        .delete(tracks)
+        .where(eq(tracks.id, trackId))
+        .returning({ key: tracks.storageKey, previewKey: tracks.previewKey });
+      if (!removed) throw new Error('track vanished under lock');
+      return { status: 204, removed } as const;
+    });
+    if (result.status !== 204) {
+      reply.code(result.status);
+      return result.body;
     }
-    const [removed] = await app.db
-      .delete(tracks)
-      .where(owned(req.user.sub, req.params.trackId))
-      .returning({ key: tracks.storageKey, previewKey: tracks.previewKey });
-    if (!removed) {
-      reply.code(404);
-      return notFound;
-    }
+    const { removed } = result;
     await app.storage.deleteMany(
       removed.previewKey ? [removed.key, removed.previewKey] : [removed.key],
     );

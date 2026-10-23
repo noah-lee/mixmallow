@@ -67,9 +67,11 @@ export type TrackAccess = {
   role: ProjectRole;
   projectId: string;
   durationMs: number;
+  uploaderId: string;
 };
 
-// `lock` takes the track row lock, so concurrent note creates count each other's notes.
+// `lock` takes the track row lock, so concurrent note creates count each other's notes,
+// and for a collaborator a share lock on their membership, as in noteAccess.
 export async function trackAccess(
   db: Database | Transaction,
   userId: string,
@@ -81,6 +83,7 @@ export async function trackAccess(
       ...roleFields,
       projectId: tracks.projectId,
       durationMs: tracks.durationMs,
+      uploaderId: tracks.userId,
     })
     .from(tracks)
     .innerJoin(projects, eq(projects.id, tracks.projectId))
@@ -91,7 +94,19 @@ export async function trackAccess(
     : await query;
   const role = row ? roleOf(row, userId) : null;
   if (!row || !role) return null;
-  return { role, projectId: row.projectId, durationMs: row.durationMs };
+  if (
+    options.lock &&
+    role === 'collaborator' &&
+    !(await lockMembership(db, row.projectId, userId))
+  ) {
+    return null;
+  }
+  return {
+    role,
+    projectId: row.projectId,
+    durationMs: row.durationMs,
+    uploaderId: row.uploaderId,
+  };
 }
 
 export type NoteAccess = {
