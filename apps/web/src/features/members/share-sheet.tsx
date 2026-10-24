@@ -497,7 +497,6 @@ function MemberList({
       {owner && collaborators.length === 0 && (
         <p className="text-sm text-muted-foreground">
           No one has joined yet.
-          {linkOff === true && " Create a link to invite someone."}
           {linkOff === false && " Share the link to invite someone."}
         </p>
       )}
